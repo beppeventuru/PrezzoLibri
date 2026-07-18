@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PrezzoLibri</title><link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./marketplace.css"><script src="./config.js"></script>
+</head>
+<body>
+  <header><div><span class="eyebrow">VALUTAZIONE LIBRI USATI</span><h1>PrezzoLibri</h1></div><div class="header-actions"><button id="newBook" class="secondary">Nuovo libro</button><button id="logout" class="secondary">Esci</button></div></header>
+  <main>
+    <section id="startView" class="hero">
+      <div><p class="kicker">Trova un prezzo realistico per Vinted</p><h2>Inizia dall’ISBN.</h2><p>Scansiona il codice a barre o inseriscilo. L’app identifica l’edizione e prepara le ricerche sui marketplace.</p></div>
+      <form id="isbnForm" class="isbn-box"><label for="isbn">ISBN-10 o ISBN-13</label><div><input id="isbn" inputmode="numeric" placeholder="9788804499862" required><button>Cerca libro</button></div><div class="scan-actions"><button id="startScanner" type="button" class="scan-button">▣ Scansiona con la fotocamera</button><label class="scan">📷 Carica una foto<input id="photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment"></label></div><section id="scannerPanel" class="scanner-panel" hidden><div class="scanner-preview"><video id="scannerVideo" autoplay muted playsinline></video><span class="scanner-guide"></span></div><div class="scanner-footer"><p id="scannerStatus">Preparazione fotocamera…</p><button id="stopScanner" type="button" class="scan-stop">Termina</button></div></section><p id="isbnStatus" class="status"></p></form>
+      <section><h3>Libri salvati</h3><div id="bookList" class="book-list"></div></section>
+    </section>
+
+    <section id="editorView" hidden>
+      <button id="back" class="link-button">← Tutti i libri</button>
+      <div class="book-editor">
+        <img id="cover" alt="Copertina"><form id="bookForm">
+          <input id="bookId" type="hidden"><label>ISBN<input id="bookIsbn" readonly></label><label>Titolo<input id="title" required></label>
+          <div class="grid"><label>Autore<input id="authors"></label><label>Editore<input id="publisher"></label><label>Anno<input id="year"></label><label>Prezzo di copertina €<input id="coverPrice" type="number" min="0" step=".01"></label></div>
+          <label>Condizioni<select id="condition"><option value="new">Come nuovo</option><option value="excellent">Ottime</option><option value="good" selected>Buone</option><option value="fair">Discrete</option><option value="poor">Danneggiato</option></select></label>
+          <label>Note<textarea id="notes" rows="2"></textarea></label><button>Salva e valuta</button>
+        </form>
+      </div>
+
+      <div id="workspace" hidden>
+        <section class="result-card"><p>PREZZO CONSIGLIATO</p><strong id="recommended">—</strong><div><span>Vendita rapida <b id="quick">—</b></span><span>Massimo realistico <b id="maximum">—</b></span></div><p id="confidence"></p><p id="explanation"></p></section>
+        <section><div class="section-heading"><div><p class="kicker">RICERCA AUTOMATICA</p><h2>Confronta i marketplace</h2></div><button id="searchMarketplaces">Cerca i prezzi</button></div><p class="muted">L’app cerca l’edizione su Vinted, eBay, AbeBooks, Subito e Amazon e mostra qui ciò che riesce a verificare.</p><p id="marketStatus" class="status"></p><div id="marketResults" class="market-results"></div><details><summary>Ricerche manuali di controllo</summary><div id="marketLinks" class="market-links"></div></details></section>
+        <section><div class="section-heading"><div><p class="kicker">CONFRONTI</p><h2>Registra ciò che trovi</h2></div><button id="addComparable">+ Aggiungi</button></div><div id="comparableList"></div></section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="comparableDialog"><form id="comparableForm" method="dialog"><h2>Nuovo confronto</h2>
+    <label>Piattaforma<select id="platform"><option>vinted</option><option>ebay</option><option>abebooks</option><option>subito</option><option>amazon</option><option>other</option></select></label>
+    <label>Titolo annuncio<input id="compTitle"></label><label>URL<input id="compUrl" type="url"></label>
+    <div class="grid"><label>Prezzo €<input id="compPrice" type="number" min=".01" step=".01" required></label><label>Spedizione €<input id="shipping" type="number" min="0" step=".01" value="0"></label></div>
+    <div class="grid"><label>Pertinenza<select id="relevance"><option value="exact">ISBN esatto</option><option value="high">Stessa edizione</option><option value="medium">Titolo pertinente</option><option value="low">Poco pertinente</option></select></label><label>Tipo di dato<select id="evidenceType"><option value="active">Annuncio attivo</option><option value="sold">Vendita conclusa</option></select></label></div>
+    <div class="actions"><button type="button" id="cancelComparable" class="secondary">Annulla</button><button value="save">Salva confronto</button></div></form></dialog>
+  <dialog id="loginDialog" class="login-dialog"><form id="loginForm"><p class="kicker">AREA PRIVATA</p><h2>Accedi a PrezzoLibri</h2><label>Username<input id="loginUsername" autocomplete="username" required></label><label>Password<input id="loginPassword" type="password" autocomplete="current-password" required></label><p id="loginStatus" class="status"></p><button>Accedi</button></form></dialog>
+  <script type="module" src="./app.js"></script>
+</body></html>
