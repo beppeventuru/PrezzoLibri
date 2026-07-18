@@ -140,6 +140,8 @@ window.addEventListener("message", async event => {
   if (data.type === "PROGRESS") { $("#marketStatus").textContent = data.message; return; }
   if (data.type !== "COMPLETE" || !state.book || data.isbn !== state.book.isbn) return;
   try {
+    $("#extensionLogPanel").hidden = false;
+    $("#extensionLogs").textContent = JSON.stringify(data.logs || [], null, 2);
     state.marketplaceResults = data.results;
     renderMarketplaceResults(data.results);
     const found = data.results.reduce((total, result) => total + result.listings.length, 0);
