@@ -3,3 +3,4 @@ data/*.db
 data/*.db-*
 node_modules/
 *.log
+supabase/.temp/

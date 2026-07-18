@@ -1,4 +1,4 @@
 window.PREZZOLIBRI_CONFIG = {
-  supabaseUrl: "",
-  supabaseAnonKey: ""
+  supabaseUrl: "https://krhydwurwzvgjmhjuaej.supabase.co",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyaHlkd3Vyd3p2Z2ptaGp1YWVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzODk5NjksImV4cCI6MjA5OTk2NTk2OX0.TvKVc8OMydmQ1Lbl_4AG7sdCrE3JaaSsqOoE81LaROE"
 };
