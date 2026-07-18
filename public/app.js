@@ -123,11 +123,12 @@ function renderMarketplaceResults(results) {
 
 $("#searchMarketplaces").addEventListener("click", async () => {
   const button = $("#searchMarketplaces"); button.disabled = true;
-  $("#marketStatus").textContent = "Ricerca in corso sui cinque siti… può richiedere circa un minuto.";
+  $("#marketStatus").textContent = "Apro direttamente le cinque ricerche ISBN e leggo i prezzi visibili…";
   try {
     const data = await request(`/api/books/${state.book.id}/search-marketplaces`, { method:"POST", body:"{}" });
     state.marketplaceResults = data.results; renderMarketplaceResults(data.results);
-    $("#marketStatus").textContent = data.added ? `${data.added} offerte aggiunte al confronto. Prezzo ricalcolato.` : "Ricerca completata: nessuna nuova offerta verificabile.";
+    const found = data.results.reduce((total, result) => total + result.listings.length, 0);
+    $("#marketStatus").textContent = data.added ? `${found} prezzi letti direttamente; ${data.added} nuovi confronti aggiunti. Prezzo ricalcolato.` : `Ricerca diretta completata: ${found} prezzi letti, nessun nuovo confronto.`;
     await openBook(state.book.id); state.marketplaceResults = data.results; renderMarketplaceResults(data.results);
   } catch (error) { $("#marketStatus").textContent = error.message; }
   finally { button.disabled = false; }
