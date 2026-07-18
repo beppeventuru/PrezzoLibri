@@ -1,0 +1,2 @@
+const button=document.querySelector("#start"),status=document.querySelector("#status");
+button.addEventListener("click",async()=>{button.disabled=true;status.textContent="Avvio…";try{const[t]=await chrome.tabs.query({active:true,currentWindow:true});const reply=await chrome.tabs.sendMessage(t.id,{type:"PREZZOLIBRI_START"});if(!reply?.ok)throw new Error(reply?.error||"Apri prima un libro su PrezzoLibri");status.textContent="Raccolta avviata. Puoi chiudere questo riquadro.";}catch(error){status.textContent=error.message||"Apri PrezzoLibri e riprova.";button.disabled=false;}});

@@ -134,6 +134,24 @@ $("#searchMarketplaces").addEventListener("click", async () => {
   finally { button.disabled = false; }
 });
 
+window.addEventListener("message", async event => {
+  const data = event.data;
+  if (event.origin !== location.origin || data?.source !== "prezzolibri-extension") return;
+  if (data.type === "PROGRESS") { $("#marketStatus").textContent = data.message; return; }
+  if (data.type !== "COMPLETE" || !state.book || data.isbn !== state.book.isbn) return;
+  try {
+    state.marketplaceResults = data.results;
+    renderMarketplaceResults(data.results);
+    const found = data.results.reduce((total, result) => total + result.listings.length, 0);
+    $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome. Li sincronizzo…`;
+    const imported = await request(`/api/books/${state.book.id}/import-marketplaces`, { method:"POST", body:JSON.stringify({ results:data.results }) });
+    await openBook(state.book.id);
+    state.marketplaceResults = data.results;
+    renderMarketplaceResults(data.results);
+    $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome; ${imported.added} nuovi confronti aggiunti.`;
+  } catch (error) { $("#marketStatus").textContent = `Raccolta completata, ma la sincronizzazione non è riuscita: ${error.message}`; }
+});
+
 $("#isbnForm").addEventListener("submit", async event => {
   event.preventDefault(); $("#isbnStatus").textContent = "Cerco titolo ed edizione…";
   try { const data = await request(`/api/isbn/${encodeURIComponent($("#isbn").value)}`); $("#isbnStatus").textContent = `Trovato tramite ${data.source}`; showEditor(data); }
