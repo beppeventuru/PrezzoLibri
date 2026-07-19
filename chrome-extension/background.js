@@ -1,14 +1,24 @@
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const encode=value=>encodeURIComponent(value);
 const normalized=value=>String(value||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("it");
-function relevantToBook(item,book){const haystack=normalized(item.title),tokens=[...new Set(normalized(`${book.title} ${book.authors||""}`).match(/[a-z0-9]{4,}/g)||[])].filter(token=>!["della","delle","degli","come","libro","edizione"].includes(token));const matches=tokens.filter(token=>haystack.includes(token)).length;return matches>=Math.min(2,tokens.length||1);}
+function relevantToBook(item,book){
+  const haystack=normalized(item.title);
+  const ignored=new Set(["della","delle","degli","come","libro","edizione","sono","alla","nelle"]);
+  const titleTokens=[...new Set(normalized(book.title).match(/[a-z0-9]{4,}/g)||[])].filter(token=>!ignored.has(token));
+  const authorTokens=[...new Set(normalized(book.authors||"").match(/[a-z0-9]{4,}/g)||[])].filter(token=>!ignored.has(token));
+  const titleMatches=titleTokens.filter(token=>haystack.includes(token)).length;
+  const authorMatches=authorTokens.filter(token=>haystack.includes(token)).length;
+  // Titoli generici come "Ragazza con paesaggio" generano quadri, stampe e
+  // figurine. Per una ricerca testuale eBay richiediamo anche l'autore.
+  return titleMatches>=Math.min(2,titleTokens.length||1)&&(!authorTokens.length||authorMatches>=1);
+}
 function isbn13to10(isbn){if(!/^978\d{10}$/.test(isbn))return"";const core=isbn.slice(3,12);let sum=0;for(let i=0;i<9;i++)sum+=Number(core[i])*(10-i);const check=(11-sum%11)%11;return core+(check===10?"X":check);}
 function tasks(book){const text=`${book.title} ${book.authors||""}`.trim(),asin=isbn13to10(book.isbn);return[
   {platform:"vinted",url:`https://www.vinted.it/catalog?search_text=${encode(book.isbn)}`},
   {platform:"vinted",url:`https://www.vinted.it/catalog?search_text=${encode(text)}`,fallback:true},
   {platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(book.isbn)}`},
   {platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(text)}`,fallback:true},
-  {platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(text)}&LH_Sold=1&LH_Complete=1`,sold:true},
+  {platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(text)}&LH_Sold=1&LH_Complete=1`,sold:true,fallback:true},
   {platform:"abebooks",url:`https://www.abebooks.it/servlet/SearchResults?isbn=${encode(book.isbn)}`},
   {platform:"abebooks",url:`https://www.abebooks.it/servlet/SearchResults?kn=${encode(text)}`,fallback:true},
   {platform:"subito",url:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${encode(book.isbn)}`},
