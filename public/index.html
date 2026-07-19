@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>PrezzoLibri</title><link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./marketplace.css"><script src="./config.js"></script>
-  <style>button:disabled{cursor:wait;opacity:.78}#saveBook[data-state="loading"]::before{content:"";display:inline-block;width:14px;height:14px;margin-right:9px;border:2px solid #fff8;border-top-color:white;border-radius:50%;vertical-align:-2px;animation:save-spin .7s linear infinite}@keyframes save-spin{to{transform:rotate(360deg)}}</style>
+  <style>.brand-home{display:block;color:inherit;text-decoration:none}.brand-home:focus-visible{outline:2px solid var(--orange);outline-offset:6px;border-radius:3px}.brand-home h1{transition:color .15s}.brand-home:hover h1{color:var(--orange)}button:disabled{cursor:wait;opacity:.78}#saveBook[data-state="loading"]::before{content:"";display:inline-block;width:14px;height:14px;margin-right:9px;border:2px solid #fff8;border-top-color:white;border-radius:50%;vertical-align:-2px;animation:save-spin .7s linear infinite}@keyframes save-spin{to{transform:rotate(360deg)}}</style>
 </head>
 <body>
-  <header><div><span class="eyebrow">VALUTAZIONE LIBRI USATI</span><h1>PrezzoLibri</h1></div><div class="header-actions"><button id="newBook" class="secondary">Nuovo libro</button><button id="logout" class="secondary">Esci</button></div></header>
+  <header><a id="homeLink" class="brand-home" href="./" aria-label="Torna alla homepage"><span class="eyebrow">VALUTAZIONE LIBRI USATI</span><h1>PrezzoLibri</h1></a><div class="header-actions"><button id="newBook" class="secondary">Nuovo libro</button><button id="logout" class="secondary">Esci</button></div></header>
   <main>
     <section id="startView" class="hero">
       <div><p class="kicker">Trova un prezzo realistico per Vinted</p><h2>Inizia dall’ISBN.</h2><p>Scansiona il codice a barre o inseriscilo. L’app identifica l’edizione e prepara le ricerche sui marketplace.</p></div>

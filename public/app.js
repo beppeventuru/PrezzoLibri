@@ -241,5 +241,5 @@ $("#logout").addEventListener("click", async () => {
 });
 
 function home(){ stopLiveScanner(); $("#editorView").hidden=true;$("#startView").hidden=false;loadBooks(); }
-$("#back").addEventListener("click",home);$("#newBook").addEventListener("click",()=>{showEditor({});$("#editorView").hidden=true;$("#startView").hidden=false;$("#isbn").focus();});
+$("#homeLink").addEventListener("click",event=>{event.preventDefault();home();window.scrollTo({top:0,behavior:"smooth"});});$("#back").addEventListener("click",home);$("#newBook").addEventListener("click",()=>{showEditor({});$("#editorView").hidden=true;$("#startView").hidden=false;$("#isbn").focus();});
 requireLogin().then(ok => { if (ok) loadBooks(); }).catch(error => { $("#loginStatus").textContent = error.message; $("#loginDialog").showModal(); });
