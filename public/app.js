@@ -119,12 +119,11 @@ function renderWorkspace() {
 function renderMarketplaceResults(results) {
   const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", amazon:"Amazon" };
   const listingRows = listings => listings.map(item => `<div class="listing"><div><b>${escapeHtml(item.title || "Offerta")}</b><small>${item.relevance === "exact" ? "ISBN esatto" : item.relevance === "high" ? "Stessa edizione probabile" : "Da verificare"}${item.condition ? ` · ${escapeHtml(item.condition)}` : ""}</small></div><strong>${euro(item.price + item.shipping)}</strong><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Verifica ↗</a></div>`).join("");
-  const ebayGroups = listings => {
-    const active = listings.filter(item => item.evidenceType !== "sold");
-    const sold = listings.filter(item => item.evidenceType === "sold");
-    return `<div class="ebay-groups"><details class="ebay-group"><summary><span>In vendita</span><b>${active.length}</b></summary>${active.length ? listingRows(active) : `<p class="empty">Nessun annuncio attivo pertinente.</p>`}</details><details class="ebay-group sold-group"><summary><span>Venduti</span><b>${sold.length}</b></summary><p class="sold-explanation">Vendite concluse: sono il riferimento più importante per stimare il prezzo reale.</p>${sold.length ? listingRows(sold) : `<p class="empty">Nessuna vendita conclusa trovata.</p>`}</details></div>`;
-  };
-  $("#marketResults").innerHTML = results.map(result => `<details class="market-result"><summary class="market-result-head"><h3>${escapeHtml(names[result.platform] || result.platform)}</h3><span class="${escapeHtml(result.status)}">${result.listings.length ? `${result.listings.length} risultati` : result.status === "blocked" ? "Non accessibile" : "Nessun risultato"}</span></summary><div class="market-result-body">${result.platform === "ebay" ? ebayGroups(result.listings) : result.listings.length ? listingRows(result.listings) : `<p class="empty">${escapeHtml(result.note || "Nessuna offerta verificabile trovata.")}</p>`}</div></details>`).join("");
+  const sections = results.flatMap(result => result.platform !== "ebay" ? [{ ...result, label:names[result.platform] || result.platform }] : [
+    { ...result, label:"eBay in vendita", listings:result.listings.filter(item => item.evidenceType !== "sold"), emptyNote:"Nessun annuncio attivo pertinente." },
+    { ...result, label:"eBay venduti", listings:result.listings.filter(item => item.evidenceType === "sold"), emptyNote:"Nessuna vendita conclusa trovata.", soldSection:true }
+  ]);
+  $("#marketResults").innerHTML = sections.map(result => `<details class="market-result${result.soldSection ? " sold-market-result" : ""}"><summary class="market-result-head"><h3>${escapeHtml(result.label)}</h3><span class="${result.listings.length ? "found" : escapeHtml(result.status)}">${result.listings.length ? `${result.listings.length} ${result.listings.length === 1 ? "risultato" : "risultati"}` : result.status === "blocked" ? "Non accessibile" : "Nessun risultato"}</span></summary><div class="market-result-body">${result.soldSection ? `<p class="sold-explanation">Vendite concluse: sono il riferimento più importante per stimare il prezzo reale.</p>` : ""}${result.listings.length ? listingRows(result.listings) : `<p class="empty">${escapeHtml(result.emptyNote || result.note || "Nessuna offerta verificabile trovata.")}</p>`}</div></details>`).join("");
 }
 
 $("#searchMarketplaces").addEventListener("click", async () => {
