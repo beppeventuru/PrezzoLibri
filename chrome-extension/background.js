@@ -13,48 +13,63 @@ function relevantToBook(item,book){
   return titleMatches>=Math.min(2,titleTokens.length||1)&&(!authorTokens.length||authorMatches>=1);
 }
 function isbn13to10(isbn){if(!/^978\d{10}$/.test(isbn))return"";const core=isbn.slice(3,12);let sum=0;for(let i=0;i<9;i++)sum+=Number(core[i])*(10-i);const check=(11-sum%11)%11;return core+(check===10?"X":check);}
-function tasks(book){const text=`${book.title} ${book.authors||""}`.trim(),asin=isbn13to10(book.isbn);return[
-  {platform:"vinted",url:`https://www.vinted.it/catalog?search_text=${encode(book.isbn)}`},
-  {platform:"vinted",url:`https://www.vinted.it/catalog?search_text=${encode(text)}`,fallback:true},
-  {platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(book.isbn)}`},
-  {platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(text)}`,fallback:true},
-  {platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(text)}&LH_Sold=1&LH_Complete=1`,sold:true,fallback:true},
-  {platform:"abebooks",url:`https://www.abebooks.it/servlet/SearchResults?isbn=${encode(book.isbn)}`},
-  {platform:"abebooks",url:`https://www.abebooks.it/servlet/SearchResults?kn=${encode(text)}`,fallback:true},
-  {platform:"subito",url:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${encode(book.isbn)}`},
-  {platform:"subito",url:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${encode(text)}`,fallback:true},
-  {platform:"libraccio",url:"https://www.libraccio.it/",mode:"search"},
-  {platform:"ibs",url:`https://www.ibs.it/search/?ts=as&query=${encode(book.isbn)}`},
-  {platform:"amazon",url:`https://www.amazon.it/s?k=${encode(book.isbn)}`,mode:"search"},
-  {platform:"amazon",url:`https://www.amazon.it/s?k=${encode(text)}`,mode:"search",fallback:true},
-  {platform:"amazon",url:`https://www.amazon.it/dp/${asin}`,mode:"offers",active:false}
-];}
+function tasks(book){const text=`${book.title} ${book.authors||""}`.trim(),asin=isbn13to10(book.isbn);return{
+  vintedIsbn:{id:"vinted-isbn",platform:"vinted",url:`https://www.vinted.it/catalog?search_text=${encode(book.isbn)}`},
+  vintedTitle:{id:"vinted-title",platform:"vinted",url:`https://www.vinted.it/catalog?search_text=${encode(text)}`,fallback:true},
+  ebayIsbn:{id:"ebay-isbn",platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(book.isbn)}`},
+  ebayTitle:{id:"ebay-title",platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(text)}`,fallback:true},
+  ebaySold:{id:"ebay-sold",platform:"ebay",url:`https://www.ebay.it/sch/i.html?_nkw=${encode(text)}&LH_Sold=1&LH_Complete=1`,sold:true,fallback:true},
+  abeIsbn:{id:"abe-isbn",platform:"abebooks",url:`https://www.abebooks.it/servlet/SearchResults?isbn=${encode(book.isbn)}`},
+  abeTitle:{id:"abe-title",platform:"abebooks",url:`https://www.abebooks.it/servlet/SearchResults?kn=${encode(text)}`,fallback:true},
+  subitoIsbn:{id:"subito-isbn",platform:"subito",url:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${encode(book.isbn)}`},
+  subitoTitle:{id:"subito-title",platform:"subito",url:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${encode(text)}`,fallback:true},
+  libraccio:{id:"libraccio",platform:"libraccio",url:"https://www.libraccio.it/",mode:"search"},
+  ibs:{id:"ibs",platform:"ibs",url:`https://www.ibs.it/search/?ts=as&query=${encode(book.isbn)}`},
+  amazonIsbn:{id:"amazon-isbn",platform:"amazon",url:`https://www.amazon.it/s?k=${encode(book.isbn)}`,mode:"search"},
+  amazonTitle:{id:"amazon-title",platform:"amazon",url:`https://www.amazon.it/s?k=${encode(text)}`,mode:"search",fallback:true},
+  amazonOffers:{id:"amazon-offers",platform:"amazon",url:`https://www.amazon.it/dp/${asin}`,mode:"offers",active:false}
+};}
 function loaded(tabId){return new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{chrome.tabs.onUpdated.removeListener(listener);reject(new Error("Tempo scaduto"));},30000);const listener=(id,info)=>{if(id===tabId&&info.status==="complete"){clearTimeout(timeout);chrome.tabs.onUpdated.removeListener(listener);resolve();}};chrome.tabs.onUpdated.addListener(listener);});}
 async function scrape(task,book){let tab;try{tab=await chrome.tabs.create({url:task.url,active:Boolean(task.active)});if(tab.status!=="complete")await loaded(tab.id);await wait(task.mode==="offers"?3000:1800);if(task.platform==="libraccio"&&task.mode==="search"){const nextPage=loaded(tab.id);const navigation=await chrome.tabs.sendMessage(tab.id,{type:"PREZZOLIBRI_NAVIGATE_LIBRACCIO",isbn:book.isbn});if(!navigation?.started)throw new Error("Ricerca Libraccio non disponibile");await nextPage;await wait(1800);}if(task.platform==="ibs"){const navigation=await chrome.tabs.sendMessage(tab.id,{type:"PREZZOLIBRI_NAVIGATE_IBS",isbn:book.isbn});if(navigation?.url&&navigation.url!==tab.url){const nextPage=loaded(tab.id);await chrome.tabs.update(tab.id,{url:navigation.url});await nextPage;await wait(1800);}}let response;for(let attempt=0;attempt<3;attempt++){try{response=await chrome.tabs.sendMessage(tab.id,{type:"PREZZOLIBRI_SCRAPE",platform:task.platform,mode:task.mode,sold:Boolean(task.sold),isbn:book.isbn,title:book.title,authors:book.authors});break;}catch{await wait(700);}}return{listings:response?.listings||[],diagnostics:response?.diagnostics||null};}catch(error){return{listings:[],diagnostics:{error:error?.message||"Errore scheda"}};}finally{if(tab?.id)await chrome.tabs.remove(tab.id).catch(()=>{});}}
 chrome.runtime.onConnect.addListener(port=>{
   if(port.name!=="prezzolibri-collection")return;
   port.onMessage.addListener(async message=>{
     if(message.type!=="START")return;
-    const all=[],diagnostics={},logs=[],work=tasks(message.book);
-    let coverUrl="";
-    for(let i=0;i<work.length;i++){
-      port.postMessage({type:"PROGRESS",message:`Apro ${work[i].platform}: ricerca ${i+1} di ${work.length}…`});
-      const packet=await scrape(work[i],message.book);
-      const collectedListings=work[i].fallback?packet.listings.filter(item=>relevantToBook(item,message.book)).map(item=>({...item,relevance:item.relevance==="exact"?"high":item.relevance})):packet.listings;
+    const all=[],diagnostics={},logs=[],work=tasks(message.book),success=new Map();
+    let coverUrl="",step=0,completed=0;
+    const processTask=async task=>{
+      const currentStep=++step;
+      port.postMessage({type:"PROGRESS",message:`Cerco su ${task.platform}… (${completed} completate)`});
+      const packet=await scrape(task,message.book);
+      const collectedListings=task.fallback?packet.listings.filter(item=>relevantToBook(item,message.book)).map(item=>({...item,relevance:item.relevance==="exact"?"high":item.relevance})):packet.listings;
       const rawListings=collectedListings.filter(item=>!/^\s*nuov/i.test(String(item.condition||"")));
       // AbeBooks ha talvolta esposto il prezzo del libro anche nel campo
       // spedizione. Non salviamo un costo palesemente duplicato.
       const listings=rawListings.map(item=>item.platform==="abebooks"&&Math.abs(Number(item.shipping)-Number(item.price))<.01?{...item,shipping:0}:item);
       all.push(...listings);
       const listingCover=listings.find(item=>item.coverUrl)?.coverUrl;
-      if(work[i].platform==="amazon"&&listingCover)coverUrl=listingCover;
+      if(task.platform==="amazon"&&listingCover)coverUrl=listingCover;
       if(packet.diagnostics){
-        diagnostics[work[i].platform]=packet.diagnostics;
-        logs.push({step:i+1,task:work[i],count:listings.length,rawCount:packet.listings.length,...packet.diagnostics});
-        if(work[i].platform==="amazon"&&packet.diagnostics.coverUrl)coverUrl=packet.diagnostics.coverUrl;
+        diagnostics[task.platform]=packet.diagnostics;
+        logs.push({step:currentStep,task,count:listings.length,rawCount:packet.listings.length,...packet.diagnostics});
+        if(task.platform==="amazon"&&packet.diagnostics.coverUrl)coverUrl=packet.diagnostics.coverUrl;
       }
-      port.postMessage({type:"PARTIAL",platform:work[i].platform,count:listings.length});
-    }
+      success.set(task.id,listings.length>0||Boolean(packet.diagnostics?.coverFound));
+      completed++;
+      port.postMessage({type:"PARTIAL",platform:task.platform,count:listings.length,completed});
+    };
+    const runWave=async(label,tasksToRun)=>{if(!tasksToRun.length)return;port.postMessage({type:"PROGRESS",message:label});await Promise.all(tasksToRun.map(processTask));};
+    await runWave("Prima ricerca: Vinted, eBay e Libraccio in parallelo…",[work.vintedIsbn,work.ebayIsbn,work.libraccio]);
+    await runWave("Controllo vendite concluse, AbeBooks e IBS…",[work.ebaySold,work.abeIsbn,work.ibs]);
+    await runWave("Controllo Subito e Amazon…",[work.subitoIsbn,work.amazonIsbn]);
+    const fallbacks=[];
+    if(!success.get(work.vintedIsbn.id))fallbacks.push(work.vintedTitle);
+    if(!success.get(work.ebayIsbn.id))fallbacks.push(work.ebayTitle);
+    if(!success.get(work.abeIsbn.id))fallbacks.push(work.abeTitle);
+    if(!success.get(work.subitoIsbn.id))fallbacks.push(work.subitoTitle);
+    if(!success.get(work.amazonIsbn.id))fallbacks.push(work.amazonTitle);
+    for(let i=0;i<fallbacks.length;i+=3)await runWave("Completo solo le ricerche che richiedono titolo e autore…",fallbacks.slice(i,i+3));
+    await runWave("Ultimo controllo: offerte usate Amazon…",[work.amazonOffers]);
     const seen=new Set();
     const uniqueAll=all.filter(item=>{
       const key=`${item.platform}|${item.evidenceType||"active"}|${item.url}`;
