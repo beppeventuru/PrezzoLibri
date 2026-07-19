@@ -32,3 +32,14 @@ test("ignora confronti esclusi", () => {
   assert.equal(result.comparableCount, 1);
   assert.equal(result.recommendedPrice, 10);
 });
+
+test("molte offerte Amazon non dominano gli altri marketplace", () => {
+  const amazon = Array.from({length:30}, () => ({ platform:"amazon", price:30, relevance:"exact", evidenceType:"active" }));
+  const result = calculatePrice({ comparables:[...amazon,
+    { platform:"vinted", price:10, relevance:"exact", evidenceType:"active" },
+    { platform:"subito", price:12, relevance:"exact", evidenceType:"active" },
+    { platform:"ebay", price:11, relevance:"exact", evidenceType:"sold" }
+  ]});
+  assert.equal(result.marketplaceCount, 4);
+  assert.ok(result.recommendedPrice <= 12);
+});

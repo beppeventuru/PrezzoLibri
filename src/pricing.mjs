@@ -29,19 +29,26 @@ export function calculatePrice({ comparables = [], coverPrice = null, condition 
     const total = Number(item.price) + Number(item.shipping || 0);
     const provider = String(item.platform || "other").toLowerCase();
     return {
+      provider,
       value: total * (MARKET[provider] ?? MARKET.other),
       weight: (RELEVANCE[item.relevance] ?? RELEVANCE.medium) *
         (EVIDENCE[item.evidenceType] ?? EVIDENCE.active)
     };
   });
-  const market = weightedMedian(normalized);
+  const providers = [...new Set(normalized.map(item => item.provider))];
+  const providerMedians = providers.map(provider => {
+    const offers = normalized.filter(item => item.provider === provider);
+    return { value:weightedMedian(offers), weight:Math.max(...offers.map(item => item.weight)) };
+  });
+  const market = weightedMedian(providerMedians);
   const conditionFactor = { new: 0.72, excellent: 0.62, good: 0.5, fair: 0.35, poor: 0.2 }[condition] ?? 0.5;
   const local = Number(coverPrice) > 0 ? Number(coverPrice) * conditionFactor : null;
   let recommended;
   if (market != null && local != null) recommended = market * 0.7 + local * 0.3;
   else recommended = market ?? local ?? 5;
-  const confidencePoints = Math.min(60, accepted.length * 10) +
-    Math.min(25, accepted.filter(x => x.relevance === "exact").length * 8) +
+  const exactProviders = new Set(accepted.filter(x => x.relevance === "exact").map(x => x.platform)).size;
+  const confidencePoints = Math.min(60, providers.length * 12) +
+    Math.min(25, exactProviders * 8) +
     Math.min(15, accepted.filter(x => x.evidenceType === "sold").length * 15);
   return {
     quickPrice: money(recommended * 0.82),
@@ -49,10 +56,11 @@ export function calculatePrice({ comparables = [], coverPrice = null, condition 
     maximumPrice: money(recommended * 1.28),
     confidence: confidencePoints >= 75 ? "high" : confidencePoints >= 40 ? "medium" : "low",
     comparableCount: accepted.length,
+    marketplaceCount: providers.length,
     soldCount: accepted.filter(x => x.evidenceType === "sold").length,
     marketMedian: market == null ? null : money(market),
     explanation: accepted.length
-      ? `Stima basata su ${accepted.length} confronti, di cui ${accepted.filter(x => x.evidenceType === "sold").length} vendite concluse.`
+      ? `Stima basata su ${accepted.length} confronti distribuiti su ${providers.length} marketplace, di cui ${accepted.filter(x => x.evidenceType === "sold").length} vendite concluse.`
       : "Stima provvisoria basata soltanto su prezzo di copertina e condizioni."
   };
 }

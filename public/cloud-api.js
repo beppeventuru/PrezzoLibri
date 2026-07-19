@@ -29,13 +29,14 @@ const evidenceWeight = { sold:1.35, active:.75 };
 const marketWeight = { vinted:1, ebay:.9, abebooks:.78, subito:.95, amazon:.82, other:.7 };
 function analysis(book, comparables) {
   const accepted = comparables.filter(item => item.accepted !== false && Number(item.price) > 0);
-  const values = accepted.map(item => ({ value:(Number(item.price)+Number(item.shipping||0))*(marketWeight[item.platform]||.7), weight:(relevanceWeight[item.relevance]||.55)*(evidenceWeight[item.evidence_type]||.75) })).sort((a,b)=>a.value-b.value);
-  let market=null,total=values.reduce((sum,item)=>sum+item.weight,0),current=0; for(const item of values){current+=item.weight;if(current>=total/2){market=item.value;break;}}
+  const weightedMedian=items=>{const sorted=[...items].sort((a,b)=>a.value-b.value),total=sorted.reduce((sum,item)=>sum+item.weight,0);let current=0;for(const item of sorted){current+=item.weight;if(current>=total/2)return item.value}return sorted.at(-1)?.value??null};
+  const values=accepted.map(item=>({provider:item.platform||"other",value:(Number(item.price)+Number(item.shipping||0))*(marketWeight[item.platform]||.7),weight:(relevanceWeight[item.relevance]||.55)*(evidenceWeight[item.evidence_type]||.75)}));
+  const providers=[...new Set(values.map(item=>item.provider))],providerMedians=providers.map(provider=>{const offers=values.filter(item=>item.provider===provider);return{value:weightedMedian(offers),weight:Math.max(...offers.map(item=>item.weight))}}),market=weightedMedian(providerMedians);
   const conditionFactor={new:.72,excellent:.62,good:.5,fair:.35,poor:.2}[book.condition]||.5;
   const local=Number(book.cover_price)>0?Number(book.cover_price)*conditionFactor:null; let recommended=market!=null&&local!=null?market*.7+local*.3:(market??local??5);
-  const points=Math.min(60,accepted.length*10)+Math.min(25,accepted.filter(x=>x.relevance==="exact").length*8)+Math.min(15,accepted.filter(x=>x.evidence_type==="sold").length*15);
+  const exactProviders=new Set(accepted.filter(x=>x.relevance==="exact").map(x=>x.platform)).size,points=Math.min(60,providers.length*12)+Math.min(25,exactProviders*8)+Math.min(15,accepted.filter(x=>x.evidence_type==="sold").length*15);
   const money=value=>Math.max(1,Math.round(value));
-  return { quickPrice:money(recommended*.82),recommendedPrice:money(recommended),maximumPrice:money(recommended*1.28),confidence:points>=75?"high":points>=40?"medium":"low",marketMedian:market==null?null:money(market),explanation:accepted.length?`Stima basata su ${accepted.length} confronti, di cui ${accepted.filter(x=>x.evidence_type==="sold").length} vendite concluse.`:"Stima provvisoria basata soltanto su prezzo di copertina e condizioni." };
+  return { quickPrice:money(recommended*.82),recommendedPrice:money(recommended),maximumPrice:money(recommended*1.28),confidence:points>=75?"high":points>=40?"medium":"low",marketMedian:market==null?null:money(market),marketplaceCount:providers.length,explanation:accepted.length?`Stima basata su ${accepted.length} confronti distribuiti su ${providers.length} marketplace, di cui ${accepted.filter(x=>x.evidence_type==="sold").length} vendite concluse.`:"Stima provvisoria basata soltanto su prezzo di copertina e condizioni." };
 }
 
 const normalizedComparableText = value => String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("it").replace(/\s+/g, " ").trim();
