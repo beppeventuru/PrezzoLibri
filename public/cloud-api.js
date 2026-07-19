@@ -46,6 +46,8 @@ function comparableKey(item) {
 async function importMarketplaceResults(db, bookId, results) {
   const allowed={vinted:["www.vinted.it","vinted.it"],ebay:["www.ebay.it","ebay.it"],abebooks:["www.abebooks.it","abebooks.it"],subito:["www.subito.it","subito.it"],amazon:["www.amazon.it","amazon.it"]};
   const candidates=(results||[]).flatMap(result=>(result.listings||[]).map(item=>({...item,platform:result.platform}))).filter(item=>{try{return allowed[item.platform]?.includes(new URL(item.url).hostname)&&Number(item.price)>0&&Number(item.price)<100000}catch{return false}});
+  const amazonCover=candidates.find(item=>item.platform==="amazon"&&item.coverUrl)?.coverUrl;
+  if(amazonCover){try{const host=new URL(amazonCover).hostname;if(host==="m.media-amazon.com"||host.endsWith(".ssl-images-amazon.com")){const {error}=await db.from("books").update({cover_url:amazonCover,updated_at:new Date().toISOString()}).eq("id",bookId);if(error)throw error;}}catch{}}
   if(candidates.some(item=>item.platform==="amazon"&&/^Usato\s*-/i.test(item.condition||""))){const {error}=await db.from("comparables").delete().eq("book_id",bookId).eq("platform","amazon").ilike("title","%offerta usata più economica%");if(error)throw error;}
   const {data:existingRows,error:existingError}=await db.from("comparables").select("id,platform,url,title,price,shipping,condition,evidence_type,observed_at").eq("book_id",bookId).order("observed_at",{ascending:false});if(existingError)throw existingError;
   const seenAmazon=new Set(),duplicateIds=[];
@@ -60,7 +62,7 @@ async function importMarketplaceResults(db, bookId, results) {
 
 async function fillMissingCovers(db, books) {
   return Promise.all((books||[]).map(async book => {
-    if(book.cover_url)return book;
+    if(book.cover_url&&!/books\.google\.com\/books\/content/i.test(book.cover_url))return book;
     try {
       const {data}=await db.functions.invoke("isbn-lookup",{body:{isbn:book.isbn}});
       if(!data?.coverUrl)return book;
