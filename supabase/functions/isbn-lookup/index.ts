@@ -12,6 +12,26 @@ async function fetchWithRetry(url:string|URL,attempts=4){
   }
   return last??fetch(url);
 }
+const jsonValue=(text:string,key:string)=>{
+  const match=text.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+  if(!match)return "";
+  try{return JSON.parse(`"${match[1]}"`);}catch{return match[1];}
+};
+async function lookupIbs(isbn:string){
+  const response=await fetch(`https://www.ibs.it/search/?query=${encodeURIComponent(isbn)}`,{
+    headers:{"user-agent":"Mozilla/5.0 (compatible; PrezzoLibri/1.0)","accept-language":"it-IT,it;q=0.9"}
+  });
+  if(!response.ok)return {item:null,status:response.status};
+  const html=await response.text();
+  const escaped=isbn.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const match=html.match(new RegExp(`\\{[^{}]*"item_id"\\s*:\\s*"${escaped}"[^{}]*\\}`));
+  if(!match)return {item:null,status:response.status};
+  const record=match[0],title=jsonValue(record,"item_name"),authors=jsonValue(record,"item_author");
+  if(!title)return {item:null,status:response.status};
+  const coverMatch=html.match(new RegExp(`https://www\\.ibs\\.it/images/${escaped}_[^"'<>\\s]+`));
+  const price=Number(jsonValue(record,"price"));
+  return {status:response.status,item:{isbn,title,authors,publisher:jsonValue(record,"item_brand"),year:jsonValue(record,"year_edition"),coverUrl:coverMatch?.[0]||"",coverPrice:Number.isFinite(price)&&price>0?price:null,source:"IBS"}};
+}
 Deno.serve(async req=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   try{
@@ -21,7 +41,10 @@ Deno.serve(async req=>{
     const googleKey=Deno.env.get("GOOGLE_BOOKS_API_KEY");if(googleKey)googleUrl.searchParams.set("key",googleKey);
     const google=await fetchWithRetry(googleUrl);
     if(google.ok){const item=(await google.json()).items?.[0];if(item){const v=item.volumeInfo||{};return Response.json({isbn,title:v.title||"",authors:(v.authors||[]).join(", "),publisher:v.publisher||"",year:String(v.publishedDate||"").slice(0,4),coverUrl:v.imageLinks?.thumbnail?.replace("http:","https:")||"",coverPrice:item.saleInfo?.listPrice?.currencyCode==="EUR"?item.saleInfo.listPrice.amount:null,source:"Google Books"},{headers:cors});}}
-    const open=await fetchWithRetry(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=1`,3);const item=open.ok?(await open.json()).docs?.[0]:null;if(!item)throw new Error(`Libro non trovato nei cataloghi (Google Books ${google.status}, Open Library ${open.status})`);
-    return Response.json({isbn,title:item.title||"",authors:(item.author_name||[]).join(", "),publisher:item.publisher?.[0]||"",year:String(item.first_publish_year||""),coverUrl:item.cover_i?`https://covers.openlibrary.org/b/id/${item.cover_i}-L.jpg`:"",coverPrice:null,source:"Open Library"},{headers:cors});
+    const open=await fetchWithRetry(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=1`,3);const item=open.ok?(await open.json()).docs?.[0]:null;
+    if(item)return Response.json({isbn,title:item.title||"",authors:(item.author_name||[]).join(", "),publisher:item.publisher?.[0]||"",year:String(item.first_publish_year||""),coverUrl:item.cover_i?`https://covers.openlibrary.org/b/id/${item.cover_i}-L.jpg`:"",coverPrice:null,source:"Open Library"},{headers:cors});
+    const ibs=await lookupIbs(isbn);
+    if(ibs.item)return Response.json(ibs.item,{headers:cors});
+    throw new Error(`Libro non trovato nei cataloghi (Google Books ${google.status}, Open Library ${open.status}, IBS ${ibs.status})`);
   }catch(error){return Response.json({error:error.message||"Errore ricerca ISBN"},{status:400,headers:cors});}
 });
