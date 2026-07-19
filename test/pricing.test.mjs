@@ -103,3 +103,13 @@ test("Libraccio prevale sulle indicazioni secondarie", () => {
   assert.equal(result.recommendedPrice, 9);
   assert.match(result.basis, /Libraccio/);
 });
+
+test("esclude completamente le copie nuove", () => {
+  const result = calculatePrice({ comparables:[
+    { platform:"amazon", price:40, condition:"Nuovo", relevance:"exact", evidenceType:"active" },
+    { platform:"ibs", price:30, condition:"Nuovo - copertina flessibile", relevance:"exact", evidenceType:"active" },
+    { platform:"libraccio", price:8, condition:"Usato selezionato da Libraccio", relevance:"exact", evidenceType:"active" }
+  ]});
+  assert.equal(result.comparableCount, 1);
+  assert.equal(result.recommendedPrice, 7);
+});

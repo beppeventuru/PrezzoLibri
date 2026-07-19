@@ -108,7 +108,7 @@ function showEditor(metadata) {
 
 function savedMarketplaceResults(comparables=[]) {
   const platforms=["vinted","ebay","abebooks","subito","libraccio","ibs","amazon"];
-  return platforms.map(platform=>{const listings=comparables.filter(item=>item.platform===platform).map(item=>({title:item.title,price:Number(item.price),shipping:Number(item.shipping||0),url:item.url,condition:item.condition,relevance:item.relevance,evidenceType:item.evidence_type||"active"}));return{platform,status:listings.length?"found":"not_found",note:"Risultati salvati per questo libro.",listings};});
+  return platforms.map(platform=>{const listings=comparables.filter(item=>item.platform===platform&&!/^\s*nuov/i.test(String(item.condition||""))).map(item=>({title:item.title,price:Number(item.price),shipping:Number(item.shipping||0),url:item.url,condition:item.condition,relevance:item.relevance,evidenceType:item.evidence_type||"active"}));return{platform,status:listings.length?"found":"not_found",note:"Risultati usati salvati per questo libro.",listings};});
 }
 
 async function openBook(id) { state.book = await request(`/api/books/${id}`);state.marketplaceResults=savedMarketplaceResults(state.book.comparables);showEditor(state.book);renderWorkspace();renderMarketplaceResults(state.marketplaceResults); }
@@ -124,6 +124,7 @@ function renderWorkspace() {
 }
 
 function renderMarketplaceResults(results) {
+  results = results.map(result => ({ ...result, listings:(result.listings || []).filter(item => !/^\s*nuov/i.test(String(item.condition || ""))) }));
   const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", libraccio:"Libraccio", ibs:"IBS", amazon:"Amazon" };
   const listingRows = listings => listings.map(item => `<div class="listing"><div><b>${escapeHtml(item.title || "Offerta")}</b><small>${item.relevance === "exact" ? "ISBN esatto" : item.relevance === "high" ? "Stessa edizione probabile" : "Da verificare"}${item.condition ? ` · ${escapeHtml(item.condition)}` : ""}</small></div><strong>${euro(item.price + item.shipping)}</strong><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Verifica ↗</a></div>`).join("");
   const sections = results.flatMap(result => result.platform !== "ebay" ? [{ ...result, label:names[result.platform] || result.platform }] : [

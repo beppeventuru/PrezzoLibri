@@ -26,7 +26,7 @@ function links(book) {
 }
 
 function analysis(book, comparables) {
-  const accepted = comparables.filter(item => item.accepted !== false && Number(item.price) > 0);
+  const accepted = comparables.filter(item => item.accepted !== false && Number(item.price) > 0 && !/^\s*nuov/i.test(String(item.condition||"")));
   const median=values=>{if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b),middle=Math.floor(sorted.length/2);return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2};
   const percentile=(values,position)=>{if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b),index=(sorted.length-1)*position,lower=Math.floor(index),fraction=index-lower;return sorted[lower+1]==null?sorted[lower]:sorted[lower]+fraction*(sorted[lower+1]-sorted[lower])};
   const robustPrices=items=>{const prices=items.map(item=>Number(item.price)).filter(price=>price>0);if(prices.length<4)return prices;const logs=prices.map(Math.log),q1=percentile(logs,.25),q3=percentile(logs,.75),spread=q3-q1,lower=q1-1.5*spread,upper=q3+1.5*spread,filtered=prices.filter(price=>Math.log(price)>=lower&&Math.log(price)<=upper);return filtered.length?filtered:prices};
@@ -58,9 +58,10 @@ function comparableKey(item) {
 }
 async function importMarketplaceResults(db, bookId, results, explicitCoverUrl="") {
   const allowed={vinted:["www.vinted.it","vinted.it"],ebay:["www.ebay.it","ebay.it"],abebooks:["www.abebooks.it","abebooks.it"],subito:["www.subito.it","subito.it"],libraccio:["www.libraccio.it","libraccio.it"],ibs:["www.ibs.it","ibs.it"],amazon:["www.amazon.it","amazon.it"]};
-  const candidates=(results||[]).flatMap(result=>(result.listings||[]).map(item=>({...item,platform:result.platform}))).filter(item=>{try{return allowed[item.platform]?.includes(new URL(item.url).hostname)&&Number(item.price)>0&&Number(item.price)<100000}catch{return false}});
+  const allCandidates=(results||[]).flatMap(result=>(result.listings||[]).map(item=>({...item,platform:result.platform}))).filter(item=>{try{return allowed[item.platform]?.includes(new URL(item.url).hostname)&&Number(item.price)>0&&Number(item.price)<100000}catch{return false}});
+  const candidates=allCandidates.filter(item=>!/^\s*nuov/i.test(String(item.condition||"")));
   const validCoverUrl=value=>{try{const url=new URL(value);return url.protocol==="https:"&&/amazon|ssl-images|abebooks|cloudfront|vinted|amazonaws/i.test(url.hostname)}catch{return false}};
-  const coverCandidate=validCoverUrl(explicitCoverUrl)?explicitCoverUrl:["amazon","abebooks","vinted"].flatMap(platform=>candidates.filter(item=>item.platform===platform&&item.coverUrl)).find(item=>validCoverUrl(item.coverUrl))?.coverUrl;
+  const coverCandidate=validCoverUrl(explicitCoverUrl)?explicitCoverUrl:["amazon","abebooks","vinted"].flatMap(platform=>allCandidates.filter(item=>item.platform===platform&&item.coverUrl)).find(item=>validCoverUrl(item.coverUrl))?.coverUrl;
   if(coverCandidate){const {error}=await db.from("books").update({cover_url:coverCandidate,updated_at:new Date().toISOString()}).eq("id",bookId);if(error)throw error;}
   if(candidates.some(item=>item.platform==="amazon"&&/^Usato\s*-/i.test(item.condition||""))){const {error}=await db.from("comparables").delete().eq("book_id",bookId).eq("platform","amazon").ilike("title","%offerta usata più economica%");if(error)throw error;}
   const {data:existingRows,error:existingError}=await db.from("comparables").select("id,platform,url,title,price,shipping,condition,evidence_type,observed_at").eq("book_id",bookId).order("observed_at",{ascending:false});if(existingError)throw existingError;

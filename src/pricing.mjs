@@ -38,7 +38,7 @@ const evidence = item => item.evidenceType || item.evidence_type || "active";
 const isReliable = item => item.relevance !== "low" && item.relevance !== "medium";
 
 export function calculatePrice({ comparables = [], coverPrice = null, condition = "good" }) {
-  const accepted = comparables.filter(item => item.accepted !== false && Number(item.price) > 0);
+  const accepted = comparables.filter(item => item.accepted !== false && Number(item.price) > 0 && !/^\s*nuov/i.test(String(item.condition || "")));
   const reliable = accepted.filter(isReliable);
   const usable = reliable.length ? reliable : accepted.filter(item => item.relevance !== "low");
   const providers = [...new Set(accepted.map(item => String(item.platform || "other").toLowerCase()))];
