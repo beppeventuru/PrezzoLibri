@@ -125,9 +125,30 @@ function renderMarketplaceResults(results) {
   $("#marketResults").innerHTML = sections.map(result => `<details class="market-result${result.soldSection ? " sold-market-result" : ""}"><summary class="market-result-head"><h3>${escapeHtml(result.label)}</h3><span class="${result.listings.length ? "found" : escapeHtml(result.status)}">${result.listings.length ? `${result.listings.length} ${result.listings.length === 1 ? "risultato" : "risultati"}` : result.status === "blocked" ? "Non accessibile" : "Nessun risultato"}</span></summary><div class="market-result-body">${result.soldSection ? `<p class="sold-explanation">Vendite concluse: sono il riferimento più importante per stimare il prezzo reale.</p>` : ""}${result.listings.length ? listingRows(result.listings) : `<p class="empty">${escapeHtml(result.emptyNote || result.note || "Nessuna offerta verificabile trovata.")}</p>`}</div></details>`).join("");
 }
 
+function startExtensionSearch() {
+  const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  return new Promise(resolve => {
+    const timeout = setTimeout(() => { window.removeEventListener("message", receive); resolve(false); }, 1000);
+    function receive(event) {
+      const data = event.data;
+      if (event.origin !== location.origin || data?.source !== "prezzolibri-extension" || data.type !== "ACCEPTED" || data.requestId !== requestId) return;
+      clearTimeout(timeout); window.removeEventListener("message", receive);
+      if (!data.ok && data.error) $("#marketStatus").textContent = data.error;
+      resolve(Boolean(data.ok));
+    }
+    window.addEventListener("message", receive);
+    window.postMessage({ source:"prezzolibri-app", type:"START_EXTENSION", requestId }, location.origin);
+  });
+}
+
 $("#searchMarketplaces").addEventListener("click", async () => {
   const button = $("#searchMarketplaces"); button.disabled = true;
-  $("#marketStatus").textContent = "Apro direttamente le cinque ricerche ISBN e leggo i prezzi visibili…";
+  $("#marketStatus").textContent = "Controllo se l’estensione PrezzoLibri è disponibile…";
+  if (await startExtensionSearch()) {
+    $("#marketStatus").textContent = "Estensione avviata: raccolgo i prezzi dalle pagine complete…";
+    return;
+  }
+  $("#marketStatus").textContent = "Estensione non disponibile: avvio la ricerca dal server…";
   try {
     const data = await request(`/api/books/${state.book.id}/search-marketplaces`, { method:"POST", body:"{}" });
     state.marketplaceResults = data.results; renderMarketplaceResults(data.results);
@@ -141,6 +162,7 @@ $("#searchMarketplaces").addEventListener("click", async () => {
 window.addEventListener("message", async event => {
   const data = event.data;
   if (event.origin !== location.origin || data?.source !== "prezzolibri-extension") return;
+  if (data.type === "ERROR") { $("#marketStatus").textContent = `Estensione interrotta: ${data.error || "errore sconosciuto"}`; $("#searchMarketplaces").disabled = false; return; }
   if (data.type === "PROGRESS") { $("#marketStatus").textContent = data.message; return; }
   if (data.type !== "COMPLETE" || !state.book || data.isbn !== state.book.isbn) return;
   try {
@@ -156,6 +178,7 @@ window.addEventListener("message", async event => {
     renderMarketplaceResults(data.results);
     $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome; ${imported.added} nuovi confronti aggiunti.`;
   } catch (error) { $("#marketStatus").textContent = `Raccolta completata, ma la sincronizzazione non è riuscita: ${error.message}`; }
+  finally { $("#searchMarketplaces").disabled = false; }
 });
 
 $("#isbnForm").addEventListener("submit", async event => {
