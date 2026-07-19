@@ -28,7 +28,10 @@ chrome.runtime.onConnect.addListener(port=>{
     for(let i=0;i<work.length;i++){
       port.postMessage({type:"PROGRESS",message:`Apro ${work[i].platform}: ricerca ${i+1} di ${work.length}…`});
       const packet=await scrape(work[i],message.book);
-      const listings=work[i].fallback?packet.listings.filter(item=>relevantToBook(item,message.book)).map(item=>({...item,relevance:item.relevance==="exact"?"high":item.relevance})):packet.listings;
+      const rawListings=work[i].fallback?packet.listings.filter(item=>relevantToBook(item,message.book)).map(item=>({...item,relevance:item.relevance==="exact"?"high":item.relevance})):packet.listings;
+      // AbeBooks ha talvolta esposto il prezzo del libro anche nel campo
+      // spedizione. Non salviamo un costo palesemente duplicato.
+      const listings=rawListings.map(item=>item.platform==="abebooks"&&Math.abs(Number(item.shipping)-Number(item.price))<.01?{...item,shipping:0}:item);
       all.push(...listings);
       const listingCover=listings.find(item=>item.coverUrl)?.coverUrl;
       if(work[i].platform==="amazon"&&listingCover)coverUrl=listingCover;

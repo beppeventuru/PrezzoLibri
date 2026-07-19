@@ -24,19 +24,29 @@ function links(book) {
     titleFallback:{ vinted:`https://www.vinted.it/catalog?search_text=${text}`, ebay:`https://www.ebay.it/sch/i.html?_nkw=${text}`, subito:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${text}` } };
 }
 
-const relevanceWeight = { exact:1, high:.85, medium:.55, low:.25 };
-const evidenceWeight = { sold:1.35, active:.75 };
-const marketWeight = { vinted:1, ebay:.9, abebooks:.78, subito:.95, amazon:.82, other:.7 };
 function analysis(book, comparables) {
   const accepted = comparables.filter(item => item.accepted !== false && Number(item.price) > 0);
-  const weightedMedian=items=>{const sorted=[...items].sort((a,b)=>a.value-b.value),total=sorted.reduce((sum,item)=>sum+item.weight,0);let current=0;for(const item of sorted){current+=item.weight;if(current>=total/2)return item.value}return sorted.at(-1)?.value??null};
-  const values=accepted.map(item=>({provider:item.platform||"other",value:(Number(item.price)+Number(item.shipping||0))*(marketWeight[item.platform]||.7),weight:(relevanceWeight[item.relevance]||.55)*(evidenceWeight[item.evidence_type]||.75)}));
-  const providers=[...new Set(values.map(item=>item.provider))],providerMedians=providers.map(provider=>{const offers=values.filter(item=>item.provider===provider);return{value:weightedMedian(offers),weight:Math.max(...offers.map(item=>item.weight))}}),market=weightedMedian(providerMedians);
-  const conditionFactor={new:.72,excellent:.62,good:.5,fair:.35,poor:.2}[book.condition]||.5;
-  const local=Number(book.cover_price)>0?Number(book.cover_price)*conditionFactor:null; let recommended=market!=null&&local!=null?market*.7+local*.3:(market??local??5);
-  const exactProviders=new Set(accepted.filter(x=>x.relevance==="exact").map(x=>x.platform)).size,points=Math.min(60,providers.length*12)+Math.min(25,exactProviders*8)+Math.min(15,accepted.filter(x=>x.evidence_type==="sold").length*15);
-  const money=value=>Math.max(1,Math.round(value));
-  return { quickPrice:money(recommended*.82),recommendedPrice:money(recommended),maximumPrice:money(recommended*1.28),confidence:points>=75?"high":points>=40?"medium":"low",marketMedian:market==null?null:money(market),marketplaceCount:providers.length,explanation:accepted.length?`Stima basata su ${accepted.length} confronti distribuiti su ${providers.length} marketplace, di cui ${accepted.filter(x=>x.evidence_type==="sold").length} vendite concluse.`:"Stima provvisoria basata soltanto su prezzo di copertina e condizioni." };
+  const median=values=>{if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b),middle=Math.floor(sorted.length/2);return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2};
+  const percentile=(values,position)=>{if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b),index=(sorted.length-1)*position,lower=Math.floor(index),fraction=index-lower;return sorted[lower+1]==null?sorted[lower]:sorted[lower]+fraction*(sorted[lower+1]-sorted[lower])};
+  const robustPrices=items=>{const prices=items.map(item=>Number(item.price)).filter(price=>price>0);if(prices.length<4)return prices;const logs=prices.map(Math.log),q1=percentile(logs,.25),q3=percentile(logs,.75),spread=q3-q1,lower=q1-1.5*spread,upper=q3+1.5*spread,filtered=prices.filter(price=>Math.log(price)>=lower&&Math.log(price)<=upper);return filtered.length?filtered:prices};
+  const center=items=>median(robustPrices(items)),upper=items=>percentile(robustPrices(items),.75),evidence=item=>item.evidence_type||item.evidenceType||"active";
+  const reliable=accepted.filter(item=>item.relevance!=="low"&&item.relevance!=="medium"),usable=reliable.length?reliable:accepted.filter(item=>item.relevance!=="low");
+  const providers=[...new Set(accepted.map(item=>String(item.platform||"other").toLowerCase()))],group=(platform,type="active")=>usable.filter(item=>String(item.platform||"other").toLowerCase()===platform&&evidence(item)===type);
+  const sold=usable.filter(item=>evidence(item)==="sold"),vinted=group("vinted"),ebay=group("ebay"),subito=group("subito"),amazon=group("amazon"),abebooks=group("abebooks");
+  const soldCenter=center(sold),vintedCenter=center(vinted),ebayCenter=center(ebay),subitoCenter=center(subito),amazonCenter=center(amazon),abeCenter=center(abebooks);
+  let market=null,basis="prezzo di copertina e condizioni";
+  if(soldCenter!=null&&vintedCenter!=null){if(vintedCenter<soldCenter/2){market=vintedCenter;basis="annunci Vinted (mercato distinto dalle vendite eBay)"}else if(vintedCenter>soldCenter*2){market=soldCenter;basis="vendite concluse eBay (annunci Vinted anomali)"}else{market=Math.min(vintedCenter,soldCenter*(sold.length>=2?1.05:1.2));basis="vendite concluse eBay, verificate sugli annunci Vinted"}}
+  else if(soldCenter!=null){market=soldCenter;basis="vendite concluse eBay"}
+  else if(vintedCenter!=null){market=vintedCenter;basis="annunci Vinted"}
+  else if(ebayCenter!=null){market=ebayCenter*.9;basis="annunci eBay, ridotti perché non ancora venduti"}
+  else if(subitoCenter!=null){market=subitoCenter*.9;basis="annunci Subito, ridotti perché non ancora venduti"}
+  else{const secondary=[amazonCenter,abeCenter].filter(value=>value!=null);if(secondary.length){market=Math.min(...secondary)*.75;basis="prezzo più prudente tra Amazon e AbeBooks"}}
+  const sourceCenters=[soldCenter,vintedCenter,ebayCenter,subitoCenter,amazonCenter,abeCenter].filter(value=>value!=null&&value>0),spreadRatio=sourceCenters.length>=2?Math.max(...sourceCenters)/Math.min(...sourceCenters):1,disagreement=spreadRatio>2;
+  const targetFactor={new:1.12,excellent:1.05,good:1,fair:.8,poor:.55}[book.condition]||1,coverFactor={new:.72,excellent:.62,good:.5,fair:.35,poor:.2}[book.condition]||.5,local=Number(book.cover_price)>0?Number(book.cover_price)*coverFactor:null,unadjusted=market??local??5,recommended=market==null?unadjusted:unadjusted*targetFactor;
+  const targetUpper=upper(vinted)??upper(ebay)??upper(sold)??upper(subito),maximumBase=targetUpper==null?recommended*1.25:Math.max(recommended,targetUpper*targetFactor),maximum=Math.min(maximumBase,recommended*(disagreement?1.25:1.5));
+  let confidence="low";if(!disagreement&&sold.length>=3&&vinted.length>=1)confidence="high";else if(!disagreement&&(sold.length>=1||vinted.length>=2))confidence="medium";
+  const money=value=>Math.max(1,Math.round(value)),warning=disagreement?` I mercati sono molto discordanti (il più alto è ${spreadRatio.toFixed(1)} volte il più basso), quindi non sono stati mediati.`:"";
+  return {quickPrice:money(recommended*.85),recommendedPrice:money(recommended),maximumPrice:money(maximum),confidence,marketMedian:market==null?null:money(market),marketplaceCount:providers.length,disagreement,spreadRatio,basis,explanation:accepted.length?`Stima basata principalmente su ${basis}. Considerati ${accepted.length} confronti, di cui ${accepted.filter(item=>evidence(item)==="sold").length} vendite concluse.${warning}`:"Stima provvisoria basata soltanto su prezzo di copertina e condizioni."};
 }
 
 const normalizedComparableText = value => String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("it").replace(/\s+/g, " ").trim();

@@ -1,7 +1,3 @@
-const RELEVANCE = { exact: 1, high: 0.85, medium: 0.55, low: 0.25 };
-const EVIDENCE = { sold: 1.35, active: 0.75 };
-const MARKET = { vinted: 1, ebay: 0.9, abebooks: 0.78, subito: 0.95, amazon: 0.82, other: 0.7 };
-
 export function median(values) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -9,58 +5,130 @@ export function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function weightedMedian(items) {
-  if (!items.length) return null;
-  const sorted = [...items].sort((a, b) => a.value - b.value);
-  const total = sorted.reduce((sum, item) => sum + item.weight, 0);
-  let current = 0;
-  for (const item of sorted) {
-    current += item.weight;
-    if (current >= total / 2) return item.value;
-  }
-  return sorted.at(-1).value;
+function percentile(values, position) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = (sorted.length - 1) * position;
+  const lower = Math.floor(index);
+  const fraction = index - lower;
+  return sorted[lower + 1] == null
+    ? sorted[lower]
+    : sorted[lower] + fraction * (sorted[lower + 1] - sorted[lower]);
 }
 
+// I prezzi si distribuiscono in modo moltiplicativo: il filtro IQR lavora sui
+// logaritmi, così un annuncio da 50 € non deforma un gruppo concentrato a 8-10 €.
+function robustPrices(items) {
+  const prices = items.map(item => Number(item.price)).filter(price => price > 0);
+  if (prices.length < 4) return prices;
+  const logs = prices.map(Math.log);
+  const q1 = percentile(logs, 0.25);
+  const q3 = percentile(logs, 0.75);
+  const spread = q3 - q1;
+  const lower = q1 - 1.5 * spread;
+  const upper = q3 + 1.5 * spread;
+  const filtered = prices.filter(price => Math.log(price) >= lower && Math.log(price) <= upper);
+  return filtered.length ? filtered : prices;
+}
+
+const center = items => median(robustPrices(items));
+const upperPrice = items => percentile(robustPrices(items), 0.75);
 const money = value => Math.max(1, Math.round(value));
+const evidence = item => item.evidenceType || item.evidence_type || "active";
+const isReliable = item => item.relevance !== "low" && item.relevance !== "medium";
 
 export function calculatePrice({ comparables = [], coverPrice = null, condition = "good" }) {
   const accepted = comparables.filter(item => item.accepted !== false && Number(item.price) > 0);
-  const normalized = accepted.map(item => {
-    const total = Number(item.price) + Number(item.shipping || 0);
-    const provider = String(item.platform || "other").toLowerCase();
-    return {
-      provider,
-      value: total * (MARKET[provider] ?? MARKET.other),
-      weight: (RELEVANCE[item.relevance] ?? RELEVANCE.medium) *
-        (EVIDENCE[item.evidenceType] ?? EVIDENCE.active)
-    };
-  });
-  const providers = [...new Set(normalized.map(item => item.provider))];
-  const providerMedians = providers.map(provider => {
-    const offers = normalized.filter(item => item.provider === provider);
-    return { value:weightedMedian(offers), weight:Math.max(...offers.map(item => item.weight)) };
-  });
-  const market = weightedMedian(providerMedians);
-  const conditionFactor = { new: 0.72, excellent: 0.62, good: 0.5, fair: 0.35, poor: 0.2 }[condition] ?? 0.5;
-  const local = Number(coverPrice) > 0 ? Number(coverPrice) * conditionFactor : null;
-  let recommended;
-  if (market != null && local != null) recommended = market * 0.7 + local * 0.3;
-  else recommended = market ?? local ?? 5;
-  const exactProviders = new Set(accepted.filter(x => x.relevance === "exact").map(x => x.platform)).size;
-  const confidencePoints = Math.min(60, providers.length * 12) +
-    Math.min(25, exactProviders * 8) +
-    Math.min(15, accepted.filter(x => x.evidenceType === "sold").length * 15);
+  const reliable = accepted.filter(isReliable);
+  const usable = reliable.length ? reliable : accepted.filter(item => item.relevance !== "low");
+  const providers = [...new Set(accepted.map(item => String(item.platform || "other").toLowerCase()))];
+  const group = (platform, type = "active") => usable.filter(item =>
+    String(item.platform || "other").toLowerCase() === platform && evidence(item) === type);
+
+  const sold = usable.filter(item => evidence(item) === "sold");
+  const vinted = group("vinted");
+  const ebayActive = group("ebay");
+  const subito = group("subito");
+  const amazon = group("amazon");
+  const abebooks = group("abebooks");
+  const soldCenter = center(sold);
+  const vintedCenter = center(vinted);
+  const ebayCenter = center(ebayActive);
+  const subitoCenter = center(subito);
+  const amazonCenter = center(amazon);
+  const abeCenter = center(abebooks);
+
+  let market = null;
+  let basis = "prezzo di copertina e condizioni";
+
+  if (soldCenter != null && vintedCenter != null) {
+    // Vinted è il mercato su cui verrà pubblicato il libro. Se diverge molto
+    // dalle vendite eBay, non mischiamo i due mercati: seguiamo Vinted.
+    if (vintedCenter < soldCenter / 2) {
+      market = vintedCenter;
+      basis = "annunci Vinted (mercato distinto dalle vendite eBay)";
+    } else if (vintedCenter > soldCenter * 2) {
+      market = soldCenter;
+      basis = "vendite concluse eBay (annunci Vinted anomali)";
+    } else {
+      const soldCeiling = sold.length >= 2 ? soldCenter * 1.05 : soldCenter * 1.2;
+      market = Math.min(vintedCenter, soldCeiling);
+      basis = "vendite concluse eBay, verificate sugli annunci Vinted";
+    }
+  } else if (soldCenter != null) {
+    market = soldCenter;
+    basis = "vendite concluse eBay";
+  } else if (vintedCenter != null) {
+    market = vintedCenter;
+    basis = "annunci Vinted";
+  } else if (ebayCenter != null) {
+    market = ebayCenter * 0.9;
+    basis = "annunci eBay, ridotti perché non ancora venduti";
+  } else if (subitoCenter != null) {
+    market = subitoCenter * 0.9;
+    basis = "annunci Subito, ridotti perché non ancora venduti";
+  } else {
+    const secondary = [amazonCenter, abeCenter].filter(value => value != null);
+    if (secondary.length) {
+      market = Math.min(...secondary) * 0.75;
+      basis = "prezzo più prudente tra Amazon e AbeBooks";
+    }
+  }
+
+  const sourceCenters = [soldCenter, vintedCenter, ebayCenter, subitoCenter, amazonCenter, abeCenter]
+    .filter(value => value != null && value > 0);
+  const spreadRatio = sourceCenters.length >= 2 ? Math.max(...sourceCenters) / Math.min(...sourceCenters) : 1;
+  const disagreement = spreadRatio > 2;
+  const targetConditionFactor = { new: 1.12, excellent: 1.05, good: 1, fair: 0.8, poor: 0.55 }[condition] ?? 1;
+  const coverConditionFactor = { new: 0.72, excellent: 0.62, good: 0.5, fair: 0.35, poor: 0.2 }[condition] ?? 0.5;
+  const local = Number(coverPrice) > 0 ? Number(coverPrice) * coverConditionFactor : null;
+  const unadjusted = market ?? local ?? 5;
+  const recommended = market == null ? unadjusted : unadjusted * targetConditionFactor;
+
+  const targetUpper = upperPrice(vinted) ?? upperPrice(ebayActive) ?? upperPrice(sold) ?? upperPrice(subito);
+  const maximumBase = targetUpper == null ? recommended * 1.25 : Math.max(recommended, targetUpper * targetConditionFactor);
+  const maximum = Math.min(maximumBase, recommended * (disagreement ? 1.25 : 1.5));
+  let confidence = "low";
+  if (!disagreement && sold.length >= 3 && vinted.length >= 1) confidence = "high";
+  else if (!disagreement && (sold.length >= 1 || vinted.length >= 2)) confidence = "medium";
+
+  const warning = disagreement
+    ? ` I mercati sono molto discordanti (il più alto è ${spreadRatio.toFixed(1)} volte il più basso), quindi non sono stati mediati.`
+    : "";
   return {
-    quickPrice: money(recommended * 0.82),
+    quickPrice: money(recommended * 0.85),
     recommendedPrice: money(recommended),
-    maximumPrice: money(recommended * 1.28),
-    confidence: confidencePoints >= 75 ? "high" : confidencePoints >= 40 ? "medium" : "low",
+    maximumPrice: money(maximum),
+    confidence,
     comparableCount: accepted.length,
     marketplaceCount: providers.length,
-    soldCount: accepted.filter(x => x.evidenceType === "sold").length,
+    soldCount: accepted.filter(item => evidence(item) === "sold").length,
     marketMedian: market == null ? null : money(market),
+    disagreement,
+    spreadRatio,
+    basis,
     explanation: accepted.length
-      ? `Stima basata su ${accepted.length} confronti distribuiti su ${providers.length} marketplace, di cui ${accepted.filter(x => x.evidenceType === "sold").length} vendite concluse.`
+      ? `Stima basata principalmente su ${basis}. Considerati ${accepted.length} confronti, di cui ${accepted.filter(item => evidence(item) === "sold").length} vendite concluse.${warning}`
       : "Stima provvisoria basata soltanto su prezzo di copertina e condizioni."
   };
 }

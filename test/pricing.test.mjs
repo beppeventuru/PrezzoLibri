@@ -43,3 +43,43 @@ test("molte offerte Amazon non dominano gli altri marketplace", () => {
   assert.equal(result.marketplaceCount, 4);
   assert.ok(result.recommendedPrice <= 12);
 });
+
+test("la spedizione del compratore non aumenta il prezzo da pubblicare", () => {
+  const withoutShipping = calculatePrice({ comparables:[
+    { platform:"vinted", price:8, shipping:0, relevance:"exact", evidenceType:"active" }
+  ]});
+  const withShipping = calculatePrice({ comparables:[
+    { platform:"vinted", price:8, shipping:40, relevance:"exact", evidenceType:"active" }
+  ]});
+  assert.equal(withShipping.recommendedPrice, withoutShipping.recommendedPrice);
+});
+
+test("Amazon e AbeBooks sproporzionati non alzano la stima Vinted", () => {
+  const result = calculatePrice({ comparables:[
+    { platform:"vinted", price:5, relevance:"exact", evidenceType:"active" },
+    { platform:"vinted", price:7, relevance:"exact", evidenceType:"active" },
+    { platform:"amazon", price:28, relevance:"exact", evidenceType:"active" },
+    { platform:"abebooks", price:42, shipping:42, relevance:"exact", evidenceType:"active" }
+  ]});
+  assert.equal(result.recommendedPrice, 6);
+  assert.equal(result.disagreement, true);
+  assert.equal(result.confidence, "low");
+});
+
+test("se Vinted e le vendite concluse rappresentano mercati diversi non li media", () => {
+  const result = calculatePrice({ comparables:[
+    { platform:"vinted", price:3, relevance:"exact", evidenceType:"active" },
+    { platform:"ebay", price:8, relevance:"exact", evidenceType:"sold" },
+    { platform:"ebay", price:10, relevance:"exact", evidenceType:"sold" },
+    { platform:"ebay", price:50, relevance:"exact", evidenceType:"sold" }
+  ]});
+  assert.equal(result.recommendedPrice, 3);
+  assert.match(result.basis, /Vinted/);
+});
+
+test("senza Vinted usa le vendite concluse e resiste agli estremi", () => {
+  const soldPrices = [8, 9, 9, 10, 10, 11, 50];
+  const result = calculatePrice({ comparables:soldPrices.map(price =>
+    ({ platform:"ebay", price, relevance:"exact", evidenceType:"sold" })) });
+  assert.equal(result.recommendedPrice, 10);
+});
