@@ -19,3 +19,5 @@
 L'estensione apre in secondo piano le ricerche pubbliche, legge soltanto titolo,
 prezzo, spedizione, condizioni e URL degli annunci, poi chiude le schede. Non
 legge password, cookie o altre pagine della navigazione.
+
+I marketplace supportati sono Vinted, eBay, AbeBooks, Subito, Libraccio, IBS e Amazon.

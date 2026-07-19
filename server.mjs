@@ -114,6 +114,8 @@ function searchLinks(book) {
     ebay: `https://www.ebay.it/sch/i.html?_nkw=${exact}`,
     abebooks: `https://www.abebooks.it/servlet/SearchResults?isbn=${exact}`,
     subito: `https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${exact}`,
+    libraccio: "https://www.libraccio.it/",
+    ibs: `https://www.ibs.it/search/?ts=as&query=${exact}`,
     amazon: `https://www.amazon.it/s?k=${exact}`,
     sold: {
       ebay: `https://www.ebay.it/sch/i.html?_nkw=${text}&LH_Sold=1&LH_Complete=1`

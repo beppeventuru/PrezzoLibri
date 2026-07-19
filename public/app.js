@@ -107,7 +107,7 @@ function showEditor(metadata) {
 }
 
 function savedMarketplaceResults(comparables=[]) {
-  const platforms=["vinted","ebay","abebooks","subito","amazon"];
+  const platforms=["vinted","ebay","abebooks","subito","libraccio","ibs","amazon"];
   return platforms.map(platform=>{const listings=comparables.filter(item=>item.platform===platform).map(item=>({title:item.title,price:Number(item.price),shipping:Number(item.shipping||0),url:item.url,condition:item.condition,relevance:item.relevance,evidenceType:item.evidence_type||"active"}));return{platform,status:listings.length?"found":"not_found",note:"Risultati salvati per questo libro.",listings};});
 }
 
@@ -118,13 +118,13 @@ function renderWorkspace() {
   $("#recommended").textContent = euro(a.recommendedPrice); $("#quick").textContent = euro(a.quickPrice); $("#maximum").textContent = euro(a.maximumPrice);
   $("#confidence").textContent = `Affidabilità ${a.confidence === "high" ? "alta" : a.confidence === "medium" ? "media" : "bassa"} · mediana mercato ${euro(a.marketMedian)}`;
   $("#explanation").textContent = a.explanation;
-  const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", amazon:"Amazon" };
+  const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", libraccio:"Libraccio", ibs:"IBS", amazon:"Amazon" };
   $("#marketLinks").innerHTML = Object.entries(names).map(([key,name]) => `<article><h3>${name}</h3><a href="${b.links[key]}" target="_blank" rel="noopener">In vendita · ISBN ↗</a>${b.links.titleFallback?.[key] ? `<a class="fallback" href="${b.links.titleFallback[key]}" target="_blank" rel="noopener">In vendita · titolo ↗</a>` : ""}${b.links.sold?.[key] ? `<a class="sold-link" href="${b.links.sold[key]}" target="_blank" rel="noopener">Venduti ultimi 90 giorni ↗</a><small class="sold-note">eBay non mostra qui le vendite più vecchie.</small>` : ""}</article>`).join("");
   if (!state.marketplaceResults) $("#marketResults").innerHTML = `<p class="empty">Premi “Cerca i prezzi”: i risultati appariranno direttamente qui.</p>`;
 }
 
 function renderMarketplaceResults(results) {
-  const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", amazon:"Amazon" };
+  const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", libraccio:"Libraccio", ibs:"IBS", amazon:"Amazon" };
   const listingRows = listings => listings.map(item => `<div class="listing"><div><b>${escapeHtml(item.title || "Offerta")}</b><small>${item.relevance === "exact" ? "ISBN esatto" : item.relevance === "high" ? "Stessa edizione probabile" : "Da verificare"}${item.condition ? ` · ${escapeHtml(item.condition)}` : ""}</small></div><strong>${euro(item.price + item.shipping)}</strong><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Verifica ↗</a></div>`).join("");
   const sections = results.flatMap(result => result.platform !== "ebay" ? [{ ...result, label:names[result.platform] || result.platform }] : [
     { ...result, label:"eBay in vendita", listings:result.listings.filter(item => item.evidenceType !== "sold"), emptyNote:"Nessun annuncio attivo pertinente." },

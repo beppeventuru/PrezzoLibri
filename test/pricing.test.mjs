@@ -83,3 +83,13 @@ test("senza Vinted usa le vendite concluse e resiste agli estremi", () => {
     ({ platform:"ebay", price, relevance:"exact", evidenceType:"sold" })) });
   assert.equal(result.recommendedPrice, 10);
 });
+
+test("su IBS privilegia le offerte usate rispetto a quelle nuove", () => {
+  const newOffers = Array.from({length:10}, () =>
+    ({ platform:"ibs", price:15, condition:"Nuovo", relevance:"exact", evidenceType:"active" }));
+  const result = calculatePrice({ comparables:[...newOffers,
+    { platform:"ibs", price:4, condition:"In buone condizioni", relevance:"exact", evidenceType:"active" },
+    { platform:"ibs", price:8, condition:"Ottima condizione", relevance:"exact", evidenceType:"active" }
+  ]});
+  assert.equal(result.recommendedPrice, 5);
+});

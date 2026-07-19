@@ -20,6 +20,7 @@ function links(book) {
   const exact = encodeURIComponent(book.isbn); const text = encodeURIComponent(`${book.title} ${book.authors || ""}`.trim());
   return { vinted:`https://www.vinted.it/catalog?search_text=${exact}`, ebay:`https://www.ebay.it/sch/i.html?_nkw=${exact}`,
     abebooks:`https://www.abebooks.it/servlet/SearchResults?isbn=${exact}`, subito:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${exact}`,
+    libraccio:`https://www.libraccio.it/`, ibs:`https://www.ibs.it/search/?ts=as&query=${exact}`,
     amazon:`https://www.amazon.it/s?k=${exact}`, sold:{ ebay:`https://www.ebay.it/sch/i.html?_nkw=${text}&LH_Sold=1&LH_Complete=1` },
     titleFallback:{ vinted:`https://www.vinted.it/catalog?search_text=${text}`, ebay:`https://www.ebay.it/sch/i.html?_nkw=${text}`, subito:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${text}` } };
 }
@@ -31,17 +32,17 @@ function analysis(book, comparables) {
   const robustPrices=items=>{const prices=items.map(item=>Number(item.price)).filter(price=>price>0);if(prices.length<4)return prices;const logs=prices.map(Math.log),q1=percentile(logs,.25),q3=percentile(logs,.75),spread=q3-q1,lower=q1-1.5*spread,upper=q3+1.5*spread,filtered=prices.filter(price=>Math.log(price)>=lower&&Math.log(price)<=upper);return filtered.length?filtered:prices};
   const center=items=>median(robustPrices(items)),upper=items=>percentile(robustPrices(items),.75),evidence=item=>item.evidence_type||item.evidenceType||"active";
   const reliable=accepted.filter(item=>item.relevance!=="low"&&item.relevance!=="medium"),usable=reliable.length?reliable:accepted.filter(item=>item.relevance!=="low");
-  const providers=[...new Set(accepted.map(item=>String(item.platform||"other").toLowerCase()))],group=(platform,type="active")=>usable.filter(item=>String(item.platform||"other").toLowerCase()===platform&&evidence(item)===type);
-  const sold=usable.filter(item=>evidence(item)==="sold"),vinted=group("vinted"),ebay=group("ebay"),subito=group("subito"),amazon=group("amazon"),abebooks=group("abebooks");
-  const soldCenter=center(sold),vintedCenter=center(vinted),ebayCenter=center(ebay),subitoCenter=center(subito),amazonCenter=center(amazon),abeCenter=center(abebooks);
+  const providers=[...new Set(accepted.map(item=>String(item.platform||"other").toLowerCase()))],group=(platform,type="active")=>usable.filter(item=>String(item.platform||"other").toLowerCase()===platform&&evidence(item)===type),usedPreferred=platform=>{const all=group(platform),used=all.filter(item=>/usato|buon|ottim|accettabil|seconda mano/i.test(String(item.condition||"")));return used.length?used:all};
+  const sold=usable.filter(item=>evidence(item)==="sold"),vinted=group("vinted"),ebay=group("ebay"),subito=group("subito"),libraccio=usedPreferred("libraccio"),ibs=usedPreferred("ibs"),amazon=usedPreferred("amazon"),abebooks=usedPreferred("abebooks");
+  const soldCenter=center(sold),vintedCenter=center(vinted),ebayCenter=center(ebay),subitoCenter=center(subito),libraccioCenter=center(libraccio),ibsCenter=center(ibs),amazonCenter=center(amazon),abeCenter=center(abebooks);
   let market=null,basis="prezzo di copertina e condizioni";
   if(soldCenter!=null&&vintedCenter!=null){if(vintedCenter<soldCenter/2){market=vintedCenter;basis="annunci Vinted (mercato distinto dalle vendite eBay)"}else if(vintedCenter>soldCenter*2){market=soldCenter;basis="vendite concluse eBay (annunci Vinted anomali)"}else{market=Math.min(vintedCenter,soldCenter*(sold.length>=2?1.05:1.2));basis="vendite concluse eBay, verificate sugli annunci Vinted"}}
   else if(soldCenter!=null){market=soldCenter;basis="vendite concluse eBay"}
   else if(vintedCenter!=null){market=vintedCenter;basis="annunci Vinted"}
   else if(ebayCenter!=null){market=ebayCenter*.9;basis="annunci eBay, ridotti perché non ancora venduti"}
   else if(subitoCenter!=null){market=subitoCenter*.9;basis="annunci Subito, ridotti perché non ancora venduti"}
-  else{const secondary=[amazonCenter,abeCenter].filter(value=>value!=null);if(secondary.length){market=Math.min(...secondary)*.75;basis="prezzo più prudente tra Amazon e AbeBooks"}}
-  const sourceCenters=[soldCenter,vintedCenter,ebayCenter,subitoCenter,amazonCenter,abeCenter].filter(value=>value!=null&&value>0),spreadRatio=sourceCenters.length>=2?Math.max(...sourceCenters)/Math.min(...sourceCenters):1,disagreement=spreadRatio>2;
+  else{const secondary=[libraccioCenter,ibsCenter,amazonCenter,abeCenter].filter(value=>value!=null);if(secondary.length){market=Math.min(...secondary)*.75;basis="prezzo più prudente tra Libraccio, IBS, Amazon e AbeBooks"}}
+  const sourceCenters=[soldCenter,vintedCenter,ebayCenter,subitoCenter,libraccioCenter,ibsCenter,amazonCenter,abeCenter].filter(value=>value!=null&&value>0),spreadRatio=sourceCenters.length>=2?Math.max(...sourceCenters)/Math.min(...sourceCenters):1,disagreement=spreadRatio>2;
   const targetFactor={new:1.12,excellent:1.05,good:1,fair:.8,poor:.55}[book.condition]||1,coverFactor={new:.72,excellent:.62,good:.5,fair:.35,poor:.2}[book.condition]||.5,local=Number(book.cover_price)>0?Number(book.cover_price)*coverFactor:null,unadjusted=market??local??5,recommended=market==null?unadjusted:unadjusted*targetFactor;
   const targetUpper=upper(vinted)??upper(ebay)??upper(sold)??upper(subito),maximumBase=targetUpper==null?recommended*1.25:Math.max(recommended,targetUpper*targetFactor),maximum=Math.min(maximumBase,recommended*(disagreement?1.25:1.5));
   let confidence="low";if(!disagreement&&sold.length>=3&&vinted.length>=1)confidence="high";else if(!disagreement&&(sold.length>=1||vinted.length>=2))confidence="medium";
@@ -55,7 +56,7 @@ function comparableKey(item) {
   return ["amazon", item.evidenceType || item.evidence_type || "active", normalizedComparableText(item.title), normalizedComparableText(item.condition), Number(item.price).toFixed(2), Number(item.shipping || 0).toFixed(2)].join("|");
 }
 async function importMarketplaceResults(db, bookId, results, explicitCoverUrl="") {
-  const allowed={vinted:["www.vinted.it","vinted.it"],ebay:["www.ebay.it","ebay.it"],abebooks:["www.abebooks.it","abebooks.it"],subito:["www.subito.it","subito.it"],amazon:["www.amazon.it","amazon.it"]};
+  const allowed={vinted:["www.vinted.it","vinted.it"],ebay:["www.ebay.it","ebay.it"],abebooks:["www.abebooks.it","abebooks.it"],subito:["www.subito.it","subito.it"],libraccio:["www.libraccio.it","libraccio.it"],ibs:["www.ibs.it","ibs.it"],amazon:["www.amazon.it","amazon.it"]};
   const candidates=(results||[]).flatMap(result=>(result.listings||[]).map(item=>({...item,platform:result.platform}))).filter(item=>{try{return allowed[item.platform]?.includes(new URL(item.url).hostname)&&Number(item.price)>0&&Number(item.price)<100000}catch{return false}});
   const validCoverUrl=value=>{try{const url=new URL(value);return url.protocol==="https:"&&/amazon|ssl-images|abebooks|cloudfront|vinted|amazonaws/i.test(url.hostname)}catch{return false}};
   const coverCandidate=validCoverUrl(explicitCoverUrl)?explicitCoverUrl:["amazon","abebooks","vinted"].flatMap(platform=>candidates.filter(item=>item.platform===platform&&item.coverUrl)).find(item=>validCoverUrl(item.coverUrl))?.coverUrl;

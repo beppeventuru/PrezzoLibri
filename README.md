@@ -20,12 +20,12 @@ La chiave OpenAI non deve mai essere inserita in `public/config.js` o nel reposi
 1. Inserimento o lettura del barcode ISBN da una foto (quando supportato dal browser).
 2. Lettura gratuita del barcode con BarcodeDetector o ZXing, come in LibreriaCasa.
 3. Recupero dei metadati da Google Books, con Open Library come fallback.
-4. Ricerca web automatica su Vinted, eBay, AbeBooks, Subito e Amazon tramite OpenAI.
+4. Ricerca diretta su Vinted, eBay, AbeBooks, Subito, Libraccio, IBS e Amazon tramite l'estensione Chrome, senza OpenAI.
 5. Controllo umano di ISBN, edizione, formato e condizioni.
 6. Registrazione di annunci attivi o vendite concluse.
 7. Calcolo di prezzo per vendita rapida, consigliato e massimo realistico.
 
-L'app non esegue scraping, non usa endpoint interni dei marketplace e non pubblica annunci.
+L'app legge le pagine pubbliche aperte dalla sua estensione Chrome, non usa endpoint interni dei marketplace e non pubblica annunci.
 I risultati dei siti devono essere verificati: alcuni marketplace ampliano automaticamente
 una ricerca ISBN e possono mostrare edizioni diverse.
 

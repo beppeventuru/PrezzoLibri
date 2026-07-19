@@ -44,17 +44,26 @@ export function calculatePrice({ comparables = [], coverPrice = null, condition 
   const providers = [...new Set(accepted.map(item => String(item.platform || "other").toLowerCase()))];
   const group = (platform, type = "active") => usable.filter(item =>
     String(item.platform || "other").toLowerCase() === platform && evidence(item) === type);
+  const usedPreferred = platform => {
+    const all = group(platform);
+    const used = all.filter(item => /usato|buon|ottim|accettabil|seconda mano/i.test(String(item.condition || "")));
+    return used.length ? used : all;
+  };
 
   const sold = usable.filter(item => evidence(item) === "sold");
   const vinted = group("vinted");
   const ebayActive = group("ebay");
   const subito = group("subito");
-  const amazon = group("amazon");
-  const abebooks = group("abebooks");
+  const libraccio = usedPreferred("libraccio");
+  const ibs = usedPreferred("ibs");
+  const amazon = usedPreferred("amazon");
+  const abebooks = usedPreferred("abebooks");
   const soldCenter = center(sold);
   const vintedCenter = center(vinted);
   const ebayCenter = center(ebayActive);
   const subitoCenter = center(subito);
+  const libraccioCenter = center(libraccio);
+  const ibsCenter = center(ibs);
   const amazonCenter = center(amazon);
   const abeCenter = center(abebooks);
 
@@ -88,14 +97,14 @@ export function calculatePrice({ comparables = [], coverPrice = null, condition 
     market = subitoCenter * 0.9;
     basis = "annunci Subito, ridotti perché non ancora venduti";
   } else {
-    const secondary = [amazonCenter, abeCenter].filter(value => value != null);
+    const secondary = [libraccioCenter, ibsCenter, amazonCenter, abeCenter].filter(value => value != null);
     if (secondary.length) {
       market = Math.min(...secondary) * 0.75;
-      basis = "prezzo più prudente tra Amazon e AbeBooks";
+      basis = "prezzo più prudente tra Libraccio, IBS, Amazon e AbeBooks";
     }
   }
 
-  const sourceCenters = [soldCenter, vintedCenter, ebayCenter, subitoCenter, amazonCenter, abeCenter]
+  const sourceCenters = [soldCenter, vintedCenter, ebayCenter, subitoCenter, libraccioCenter, ibsCenter, amazonCenter, abeCenter]
     .filter(value => value != null && value > 0);
   const spreadRatio = sourceCenters.length >= 2 ? Math.max(...sourceCenters) / Math.min(...sourceCenters) : 1;
   const disagreement = spreadRatio > 2;
