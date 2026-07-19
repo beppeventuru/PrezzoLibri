@@ -1,9 +1,24 @@
 .market-results { display:grid; gap:12px; margin:18px 0; }
-.market-result { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:16px; }
-.market-result-head { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.market-result { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:0; margin:0; overflow:hidden; }
+.market-result-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px; list-style:none; }
+.market-result-head::-webkit-details-marker { display:none; }
+.market-result-head::before { content:"›"; color:var(--green); font-size:26px; font-weight:800; line-height:1; transition:transform .18s ease; }
+.market-result[open] > .market-result-head::before { transform:rotate(90deg); }
 .market-result-head h3 { margin:0; }
 .market-result-head span { font-size:11px; font-weight:800; padding:5px 8px; border-radius:6px; background:#e5e1d8; }
 .market-result-head .found { background:#dceadd; color:var(--green); }
+.market-result-body { border-top:1px solid var(--line); padding:0 16px 16px; }
+.ebay-groups { display:grid; gap:10px; padding-top:12px; }
+.ebay-group { margin:0; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+.ebay-group > summary { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; list-style:none; background:#f4f0e7; }
+.ebay-group > summary::-webkit-details-marker { display:none; }
+.ebay-group > summary::before { content:"+"; margin-right:8px; }
+.ebay-group[open] > summary::before { content:"−"; }
+.ebay-group > summary span { flex:1; }
+.ebay-group > summary b { min-width:30px; padding:3px 8px; border-radius:999px; background:#dceadd; text-align:center; }
+.ebay-group .listing,.ebay-group .empty,.sold-explanation { margin-left:14px; margin-right:14px; }
+.sold-group > summary { background:#e6efe9; color:var(--green); }
+.sold-explanation { color:#59665f; font-size:13px; line-height:1.4; }
 .listing { display:grid; grid-template-columns:1fr auto auto; gap:16px; align-items:center; border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }
 .listing small { display:block; color:#73766f; margin-top:4px; }
 .listing a { color:var(--orange); font-weight:800; }
