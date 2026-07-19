@@ -58,7 +58,7 @@ async function importMarketplaceResults(db, bookId, results, explicitCoverUrl=""
   const candidateKeys=new Set();
   const rows=candidates.filter(item=>{const key=comparableKey(item);if(existingKeys.has(key)||candidateKeys.has(key))return false;candidateKeys.add(key);return true;}).map(item=>({book_id:bookId,platform:item.platform,url:item.url,title:item.title||"",price:Number(item.price),shipping:Math.max(0,Number(item.shipping)||0),condition:item.condition||"",relevance:["exact","high","medium","low"].includes(item.relevance)?item.relevance:"medium",evidence_type:item.evidenceType==="sold"?"sold":"active",accepted:true}));
   if(rows.length){const {error}=await db.from("comparables").insert(rows);if(error)throw error;}
-  return {added:rows.length,removedDuplicates:duplicateIds.length};
+  return {added:rows.length,removedDuplicates:duplicateIds.length,coverSaved:Boolean(coverCandidate),coverUrl:coverCandidate||""};
 }
 
 async function fillMissingCovers(db, books) {

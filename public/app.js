@@ -181,7 +181,8 @@ window.addEventListener("message", async event => {
     state.marketplaceResults = data.results;
     renderMarketplaceResults(data.results);
     const cleanup = imported.removedDuplicates ? ` Rimossi ${imported.removedDuplicates} duplicati.` : "";
-    $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome; ${imported.added} nuovi confronti aggiunti.${cleanup}`;
+    const coverStatus = imported.coverSaved ? " Copertina Amazon ricevuta e salvata." : ` Nessuna copertina ricevuta dall’estensione ${data.extensionVersion||"non aggiornata"}.`;
+    $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome; ${imported.added} nuovi confronti aggiunti.${cleanup}${coverStatus}`;
   } catch (error) { $("#marketStatus").textContent = `Raccolta completata, ma la sincronizzazione non è riuscita: ${error.message}`; }
   finally { $("#searchMarketplaces").disabled = false; }
 });
