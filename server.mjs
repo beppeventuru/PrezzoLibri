@@ -202,7 +202,12 @@ async function api(req, res, url) {
     return json(res, errors.length ? 503 : 404, { error: errors.length ? "Cataloghi temporaneamente non disponibili" : "Libro non trovato", details: errors });
   }
   if (req.method === "GET" && url.pathname === "/api/books") {
-    return json(res, 200, q("SELECT * FROM books ORDER BY updated_at DESC").all());
+    const books = q("SELECT * FROM books ORDER BY updated_at DESC").all();
+    const comparisons = q("SELECT * FROM comparables ORDER BY observed_at DESC").all();
+    return json(res, 200, books.map(book => {
+      const comparables = comparisons.filter(item => item.book_id === book.id);
+      return { ...book, analysis:calculatePrice({ comparables:comparables.map(item => ({...item,evidenceType:item.evidence_type,accepted:Boolean(item.accepted)})), coverPrice:book.cover_price, condition:book.condition }) };
+    }));
   }
   if (req.method === "POST" && url.pathname === "/api/books") {
     const input = await body(req); const isbn = canonicalIsbn(input.isbn);
