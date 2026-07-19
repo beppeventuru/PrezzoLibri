@@ -46,8 +46,8 @@ function comparableKey(item) {
 async function importMarketplaceResults(db, bookId, results) {
   const allowed={vinted:["www.vinted.it","vinted.it"],ebay:["www.ebay.it","ebay.it"],abebooks:["www.abebooks.it","abebooks.it"],subito:["www.subito.it","subito.it"],amazon:["www.amazon.it","amazon.it"]};
   const candidates=(results||[]).flatMap(result=>(result.listings||[]).map(item=>({...item,platform:result.platform}))).filter(item=>{try{return allowed[item.platform]?.includes(new URL(item.url).hostname)&&Number(item.price)>0&&Number(item.price)<100000}catch{return false}});
-  const amazonCover=candidates.find(item=>item.platform==="amazon"&&item.coverUrl)?.coverUrl;
-  if(amazonCover){try{const host=new URL(amazonCover).hostname;if(host==="m.media-amazon.com"||host.endsWith(".ssl-images-amazon.com")){const {error}=await db.from("books").update({cover_url:amazonCover,updated_at:new Date().toISOString()}).eq("id",bookId);if(error)throw error;}}catch{}}
+  const coverCandidate=["amazon","abebooks","vinted"].flatMap(platform=>candidates.filter(item=>item.platform===platform&&item.coverUrl)).find(item=>{try{const url=new URL(item.coverUrl);return url.protocol==="https:"&&/amazon|ssl-images|abebooks|cloudfront|vinted|amazonaws/i.test(url.hostname)}catch{return false}})?.coverUrl;
+  if(coverCandidate){const {error}=await db.from("books").update({cover_url:coverCandidate,updated_at:new Date().toISOString()}).eq("id",bookId);if(error)throw error;}
   if(candidates.some(item=>item.platform==="amazon"&&/^Usato\s*-/i.test(item.condition||""))){const {error}=await db.from("comparables").delete().eq("book_id",bookId).eq("platform","amazon").ilike("title","%offerta usata più economica%");if(error)throw error;}
   const {data:existingRows,error:existingError}=await db.from("comparables").select("id,platform,url,title,price,shipping,condition,evidence_type,observed_at").eq("book_id",bookId).order("observed_at",{ascending:false});if(existingError)throw existingError;
   const seenAmazon=new Set(),duplicateIds=[];

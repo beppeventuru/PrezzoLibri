@@ -8,6 +8,7 @@ let scannerStream = null;
 let scannerReading = false;
 const euro = value => value == null ? "—" : new Intl.NumberFormat("it-IT", { style:"currency", currency:"EUR" }).format(value);
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[character]);
+const usableCoverUrl = value => value && !/books\.google\.com\/books\/content/i.test(value) ? value : "";
 
 function loadScannerLibrary() {
   if (window.ZXingBrowser) return Promise.resolve(window.ZXingBrowser);
@@ -91,7 +92,7 @@ async function requireLogin() {
 async function loadBooks() {
   const books = await request("/api/books");
   const noCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='230'%3E%3Crect width='100%25' height='100%25' fill='%23e8e1d5'/%3E%3Cpath d='M48 55h64v90H48z' fill='none' stroke='%23756f66' stroke-width='5'/%3E%3Cpath d='M58 72h44M58 88h34M58 104h39' stroke='%23756f66' stroke-width='4'/%3E%3C/svg%3E";
-  $("#bookList").innerHTML = books.length ? books.map(book => `<button class="book-row" data-id="${book.id}"><img src="${escapeHtml(book.cover_url || noCover)}" alt="Copertina di ${escapeHtml(book.title)}"><span class="book-row-copy"><b>${escapeHtml(book.title)}</b><small>${escapeHtml(book.authors || "Autore non indicato")}</small><em>ISBN ${escapeHtml(book.isbn)}</em></span><span class="book-row-price"><small>Prezzo consigliato</small><strong>${euro(book.analysis?.recommendedPrice)}</strong></span></button>`).join("") : `<p class="empty">Nessun libro ancora valutato.</p>`;
+  $("#bookList").innerHTML = books.length ? books.map(book => `<button class="book-row" data-id="${book.id}"><img src="${escapeHtml(usableCoverUrl(book.cover_url) || noCover)}" alt="Copertina di ${escapeHtml(book.title)}"><span class="book-row-copy"><b>${escapeHtml(book.title)}</b><small>${escapeHtml(book.authors || "Autore non indicato")}</small><em>ISBN ${escapeHtml(book.isbn)}</em></span><span class="book-row-price"><small>Prezzo consigliato</small><strong>${euro(book.analysis?.recommendedPrice)}</strong></span></button>`).join("") : `<p class="empty">Nessun libro ancora valutato.</p>`;
   document.querySelectorAll(".book-row img").forEach(image => image.addEventListener("error", () => { image.src = noCover; }, { once:true }));
   document.querySelectorAll(".book-row").forEach(button => button.addEventListener("click", () => openBook(button.dataset.id)));
 }
@@ -101,7 +102,7 @@ function showEditor(metadata) {
   $("#bookId").value = metadata.id || ""; $("#bookIsbn").value = metadata.isbn || ""; $("#title").value = metadata.title || "";
   $("#authors").value = metadata.authors || ""; $("#publisher").value = metadata.publisher || ""; $("#year").value = metadata.year || "";
   $("#coverPrice").value = metadata.cover_price ?? metadata.coverPrice ?? ""; $("#condition").value = metadata.condition || "good"; $("#notes").value = metadata.notes || "";
-  $("#cover").src = metadata.cover_url || metadata.coverUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='340'%3E%3Crect width='100%25' height='100%25' fill='%23e8e1d5'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' fill='%23756f66'%3ENessuna copertina%3C/text%3E%3C/svg%3E";
+  $("#cover").src = usableCoverUrl(metadata.cover_url || metadata.coverUrl) || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='340'%3E%3Crect width='100%25' height='100%25' fill='%23e8e1d5'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' fill='%23756f66'%3ENessuna copertina%3C/text%3E%3C/svg%3E";
   $("#workspace").hidden = !metadata.id;
 }
 
