@@ -176,7 +176,7 @@ window.addEventListener("message", async event => {
     renderMarketplaceResults(data.results);
     const found = data.results.reduce((total, result) => total + result.listings.length, 0);
     $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome. Li sincronizzo…`;
-    const imported = await request(`/api/books/${state.book.id}/import-marketplaces`, { method:"POST", body:JSON.stringify({ results:data.results }) });
+    const imported = await request(`/api/books/${state.book.id}/import-marketplaces`, { method:"POST", body:JSON.stringify({ results:data.results, coverUrl:data.coverUrl }) });
     await openBook(state.book.id);
     state.marketplaceResults = data.results;
     renderMarketplaceResults(data.results);
