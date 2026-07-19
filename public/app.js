@@ -182,6 +182,7 @@ window.addEventListener("message", async event => {
     technicalLog.push({stage:"salvataggio database",coverSaved:Boolean(imported.coverSaved),coverUrl:imported.coverUrl||""});
     $("#extensionLogs").textContent = JSON.stringify(technicalLog, null, 2);
     await openBook(state.book.id);
+    await loadBooks();
     state.marketplaceResults = data.results;
     renderMarketplaceResults(data.results);
     const cleanup = imported.removedDuplicates ? ` Rimossi ${imported.removedDuplicates} duplicati.` : "";
@@ -217,8 +218,8 @@ $("#startScanner").addEventListener("click", startLiveScanner);
 $("#stopScanner").addEventListener("click", () => stopLiveScanner());
 
 $("#bookForm").addEventListener("submit", async event => {
-  event.preventDefault(); const payload = { isbn:$("#bookIsbn").value,title:$("#title").value,authors:$("#authors").value,publisher:$("#publisher").value,year:$("#year").value,coverUrl:$("#cover").src.startsWith("data:")?"":$("#cover").src,coverPrice:Number($("#coverPrice").value)||null,condition:$("#condition").value,notes:$("#notes").value };
-  const book = await request("/api/books", { method:"POST", body:JSON.stringify(payload) }); await openBook(book.id);
+  event.preventDefault(); const submitButton=event.submitter||$("#bookForm button[type='submit']");submitButton.disabled=true;const payload = { isbn:$("#bookIsbn").value,title:$("#title").value,authors:$("#authors").value,publisher:$("#publisher").value,year:$("#year").value,coverUrl:$("#cover").src.startsWith("data:")?"":$("#cover").src,coverPrice:Number($("#coverPrice").value)||null,condition:$("#condition").value,notes:$("#notes").value };
+  try{const book = await request("/api/books", { method:"POST", body:JSON.stringify(payload) });await openBook(book.id);await loadBooks();$("#marketStatus").textContent="Libro salvato. Avvio automaticamente la ricerca di copertina e prezzi…";$("#searchMarketplaces").click();}finally{submitButton.disabled=false;}
 });
 
 $("#loginForm").addEventListener("submit", async event => {
