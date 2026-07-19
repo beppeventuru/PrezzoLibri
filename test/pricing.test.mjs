@@ -77,6 +77,18 @@ test("se Vinted e le vendite concluse rappresentano mercati diversi non li media
   assert.match(result.basis, /Vinted/);
 });
 
+test("una sola vendita molto bassa non annulla il consenso degli annunci attivi", () => {
+  const result = calculatePrice({ comparables:[
+    { platform:"vinted", price:10, relevance:"high", evidenceType:"active" },
+    { platform:"ebay", price:9, relevance:"high", evidenceType:"active" },
+    { platform:"ebay", price:16.65, relevance:"high", evidenceType:"active" },
+    { platform:"ebay", price:3.99, relevance:"high", evidenceType:"sold" }
+  ]});
+  assert.equal(result.soldCount, 1);
+  assert.equal(result.recommendedPrice, 9);
+  assert.match(result.basis, /una sola vendita eBay/);
+});
+
 test("senza Vinted usa le vendite concluse e resiste agli estremi", () => {
   const soldPrices = [8, 9, 9, 10, 10, 11, 50];
   const result = calculatePrice({ comparables:soldPrices.map(price =>

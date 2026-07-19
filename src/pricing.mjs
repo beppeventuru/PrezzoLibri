@@ -77,8 +77,15 @@ export function calculatePrice({ comparables = [], coverPrice = null, condition 
       market = vintedCenter;
       basis = "annunci Vinted (mercato distinto dalle vendite eBay)";
     } else if (vintedCenter > soldCenter * 2) {
-      market = soldCenter;
-      basis = "vendite concluse eBay (annunci Vinted anomali)";
+      if (sold.length === 1) {
+        const activeCenters = [vintedCenter, ebayCenter, subitoCenter, libraccioCenter].filter(value => value != null);
+        const activeConsensus = Math.min(vintedCenter, median(activeCenters) ?? vintedCenter);
+        market = activeConsensus * 0.85 + soldCenter * 0.15;
+        basis = "annunci attivi concordanti, con una sola vendita eBay usata come correttivo";
+      } else {
+        market = soldCenter;
+        basis = "vendite concluse eBay (annunci Vinted anomali)";
+      }
     } else {
       const soldCeiling = sold.length >= 2 ? soldCenter * 1.05 : soldCenter * 1.2;
       market = Math.min(vintedCenter, soldCeiling);
