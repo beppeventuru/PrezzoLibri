@@ -8,7 +8,7 @@ function tasks(book){const text=`${book.title} ${book.authors||""}`.trim(),asin=
   {platform:"abebooks",url:`https://www.abebooks.it/servlet/SearchResults?isbn=${encode(book.isbn)}`},
   {platform:"subito",url:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${encode(book.isbn)}`},
   {platform:"amazon",url:`https://www.amazon.it/s?k=${encode(book.isbn)}`,mode:"search"},
-  {platform:"amazon",url:`https://www.amazon.it/dp/${asin}`,mode:"offers",active:true}
+  {platform:"amazon",url:`https://www.amazon.it/dp/${asin}`,mode:"offers",active:false}
 ];}
 function loaded(tabId){return new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{chrome.tabs.onUpdated.removeListener(listener);reject(new Error("Tempo scaduto"));},30000);const listener=(id,info)=>{if(id===tabId&&info.status==="complete"){clearTimeout(timeout);chrome.tabs.onUpdated.removeListener(listener);resolve();}};chrome.tabs.onUpdated.addListener(listener);});}
 async function scrape(task,book){let tab;try{tab=await chrome.tabs.create({url:task.url,active:Boolean(task.active)});if(tab.status!=="complete")await loaded(tab.id);await wait(task.mode==="offers"?3000:1800);let response;for(let attempt=0;attempt<3;attempt++){try{response=await chrome.tabs.sendMessage(tab.id,{type:"PREZZOLIBRI_SCRAPE",platform:task.platform,mode:task.mode,sold:Boolean(task.sold),isbn:book.isbn,title:book.title,authors:book.authors});break;}catch{await wait(700);}}return{listings:response?.listings||[],diagnostics:response?.diagnostics||null};}catch(error){return{listings:[],diagnostics:{error:error?.message||"Errore scheda"}};}finally{if(tab?.id)await chrome.tabs.remove(tab.id).catch(()=>{});}}
