@@ -171,12 +171,16 @@ window.addEventListener("message", async event => {
   if (data.type !== "COMPLETE" || !state.book || data.isbn !== state.book.isbn) return;
   try {
     $("#extensionLogPanel").hidden = false;
-    $("#extensionLogs").textContent = JSON.stringify(data.logs || [], null, 2);
+    $("#extensionLogPanel").open = true;
+    const technicalLog = [...(data.logs || []), { stage:"ricezione nell’app", extensionVersion:data.extensionVersion||"assente", coverFound:Boolean(data.coverUrl), coverUrl:data.coverUrl||"" }];
+    $("#extensionLogs").textContent = JSON.stringify(technicalLog, null, 2);
     state.marketplaceResults = data.results;
     renderMarketplaceResults(data.results);
     const found = data.results.reduce((total, result) => total + result.listings.length, 0);
     $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome. Li sincronizzo…`;
     const imported = await request(`/api/books/${state.book.id}/import-marketplaces`, { method:"POST", body:JSON.stringify({ results:data.results, coverUrl:data.coverUrl }) });
+    technicalLog.push({stage:"salvataggio database",coverSaved:Boolean(imported.coverSaved),coverUrl:imported.coverUrl||""});
+    $("#extensionLogs").textContent = JSON.stringify(technicalLog, null, 2);
     await openBook(state.book.id);
     state.marketplaceResults = data.results;
     renderMarketplaceResults(data.results);
