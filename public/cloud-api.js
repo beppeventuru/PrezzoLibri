@@ -16,6 +16,28 @@ async function localRequest(path, options) {
   const data = await response.json(); if (!response.ok) throw new Error(data.error || "Errore"); return data;
 }
 
+async function directIsbnLookup(isbn) {
+  let googleStatus = "non raggiungibile", openStatus = "non raggiungibile";
+  try {
+    const google = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&maxResults=1&projection=full`);
+    googleStatus = google.status;
+    if (google.ok) {
+      const item = (await google.json()).items?.[0];
+      if (item) {
+        const volume = item.volumeInfo || {};
+        return { isbn, title:volume.title || "", authors:(volume.authors || []).join(", "), publisher:volume.publisher || "", year:String(volume.publishedDate || "").slice(0,4), coverUrl:volume.imageLinks?.thumbnail?.replace("http:","https:") || "", coverPrice:item.saleInfo?.listPrice?.currencyCode === "EUR" ? item.saleInfo.listPrice.amount : null, source:"Google Books (ricerca diretta)" };
+      }
+    }
+  } catch {}
+  try {
+    const open = await fetch(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=1`);
+    openStatus = open.status;
+    const item = open.ok ? (await open.json()).docs?.[0] : null;
+    if (item) return { isbn, title:item.title || "", authors:(item.author_name || []).join(", "), publisher:item.publisher?.[0] || "", year:String(item.first_publish_year || ""), coverUrl:item.cover_i ? `https://covers.openlibrary.org/b/id/${item.cover_i}-L.jpg` : "", coverPrice:null, source:"Open Library (ricerca diretta)" };
+  } catch {}
+  throw new Error(`Libro non trovato nei cataloghi disponibili (Google Books ${googleStatus}, Open Library ${openStatus})`);
+}
+
 function links(book) {
   const exact = encodeURIComponent(book.isbn); const text = encodeURIComponent(`${book.title} ${book.authors || ""}`.trim());
   return { vinted:`https://www.vinted.it/catalog?search_text=${exact}`, ebay:`https://www.ebay.it/sch/i.html?_nkw=${exact}`,
@@ -99,7 +121,7 @@ async function cloudRequest(path, options={}) {
   if (path === "/api/session" && method === "GET") { const { data }=await db.auth.getSession(); return { authenticated:Boolean(data.session), configured:true }; }
   if (path === "/api/session" && method === "POST") { const email=`${String(input.username).trim().toLowerCase()}@prezzolibri.local`; const {error}=await db.auth.signInWithPassword({email,password:input.password}); if(error) throw new Error("Username o password errati"); return {authenticated:true}; }
   if (path === "/api/session" && method === "DELETE") { await db.auth.signOut(); return {authenticated:false}; }
-  const isbnMatch=path.match(/^\/api\/isbn\/(.+)$/); if(isbnMatch){const {data,error}=await db.functions.invoke("isbn-lookup",{body:{isbn:decodeURIComponent(isbnMatch[1])}});if(error||data?.error)throw new Error(data?.error||error.message);return data;}
+  const isbnMatch=path.match(/^\/api\/isbn\/(.+)$/); if(isbnMatch){const isbn=decodeURIComponent(isbnMatch[1]);let directError;try{return await directIsbnLookup(isbn)}catch(error){directError=error}try{const {data,error}=await db.functions.invoke("isbn-lookup",{body:{isbn}});if(!error&&!data?.error)return data;}catch{}throw directError;}
   if(path==="/api/books"&&method==="GET"){const {data:books,error}=await db.from("books").select("*").order("updated_at",{ascending:false});if(error)throw error;if(!books?.length)return[];const {data:comparables,error:compError}=await db.from("comparables").select("*").in("book_id",books.map(book=>book.id));if(compError)throw compError;return books.map(book=>({...book,analysis:analysis(book,(comparables||[]).filter(item=>item.book_id===book.id))}));}
   if(path==="/api/books"&&method==="POST"){const {data:{user}}=await db.auth.getUser();const row={user_id:user.id,isbn:input.isbn,title:input.title,authors:input.authors||"",publisher:input.publisher||"",year:input.year||"",cover_url:input.coverUrl||"",cover_price:input.coverPrice||null,condition:input.condition||"good",notes:input.notes||"",updated_at:new Date().toISOString()};const {data,error}=await db.from("books").upsert(row,{onConflict:"user_id,isbn"}).select().single();if(error)throw error;return data;}
   const bookMatch=path.match(/^\/api\/books\/(\d+)$/);if(bookMatch&&method==="GET"){const {data:book,error}=await db.from("books").select("*").eq("id",bookMatch[1]).single();if(error)throw error;const {data:comparables,error:compError}=await db.from("comparables").select("*").eq("book_id",book.id).order("observed_at",{ascending:false});if(compError)throw compError;return {...book,comparables,links:links(book),analysis:analysis(book,comparables)};}
