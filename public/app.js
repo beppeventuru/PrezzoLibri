@@ -106,7 +106,12 @@ function showEditor(metadata) {
   $("#workspace").hidden = !metadata.id;
 }
 
-async function openBook(id) { state.book = await request(`/api/books/${id}`); showEditor(state.book); renderWorkspace(); }
+function savedMarketplaceResults(comparables=[]) {
+  const platforms=["vinted","ebay","abebooks","subito","amazon"];
+  return platforms.map(platform=>{const listings=comparables.filter(item=>item.platform===platform).map(item=>({title:item.title,price:Number(item.price),shipping:Number(item.shipping||0),url:item.url,condition:item.condition,relevance:item.relevance,evidenceType:item.evidence_type||"active"}));return{platform,status:listings.length?"found":"not_found",note:"Risultati salvati per questo libro.",listings};});
+}
+
+async function openBook(id) { state.book = await request(`/api/books/${id}`);state.marketplaceResults=savedMarketplaceResults(state.book.comparables);showEditor(state.book);renderWorkspace();renderMarketplaceResults(state.marketplaceResults); }
 
 function renderWorkspace() {
   const b = state.book, a = b.analysis;
@@ -218,8 +223,8 @@ $("#startScanner").addEventListener("click", startLiveScanner);
 $("#stopScanner").addEventListener("click", () => stopLiveScanner());
 
 $("#bookForm").addEventListener("submit", async event => {
-  event.preventDefault(); const submitButton=event.submitter||$("#bookForm button[type='submit']");submitButton.disabled=true;const payload = { isbn:$("#bookIsbn").value,title:$("#title").value,authors:$("#authors").value,publisher:$("#publisher").value,year:$("#year").value,coverUrl:$("#cover").src.startsWith("data:")?"":$("#cover").src,coverPrice:Number($("#coverPrice").value)||null,condition:$("#condition").value,notes:$("#notes").value };
-  try{const book = await request("/api/books", { method:"POST", body:JSON.stringify(payload) });await openBook(book.id);await loadBooks();$("#marketStatus").textContent="Libro salvato. Avvio automaticamente la ricerca di copertina e prezzi…";$("#searchMarketplaces").click();}finally{submitButton.disabled=false;}
+  event.preventDefault();const submitButton=$("#saveBook");submitButton.disabled=true;submitButton.dataset.state="loading";submitButton.textContent="Salvataggio in corso…";const payload = { isbn:$("#bookIsbn").value,title:$("#title").value,authors:$("#authors").value,publisher:$("#publisher").value,year:$("#year").value,coverUrl:$("#cover").src.startsWith("data:")?"":$("#cover").src,coverPrice:Number($("#coverPrice").value)||null,condition:$("#condition").value,notes:$("#notes").value };
+  try{const book=await request("/api/books",{method:"POST",body:JSON.stringify(payload)});submitButton.textContent="Libro salvato · avvio valutazione…";await openBook(book.id);await loadBooks();$("#marketStatus").textContent="Libro salvato. Avvio automaticamente la ricerca di copertina e prezzi…";$("#searchMarketplaces").click();setTimeout(()=>{submitButton.disabled=false;submitButton.dataset.state="";submitButton.textContent="Salva e valuta";},1800);}catch(error){submitButton.disabled=false;submitButton.dataset.state="";submitButton.textContent="Salva e valuta";$("#marketStatus").textContent=`Salvataggio non riuscito: ${error.message}`;}
 });
 
 $("#loginForm").addEventListener("submit", async event => {
