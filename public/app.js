@@ -1,7 +1,7 @@
 import { request } from "./cloud-api.js";
 
 const $ = selector => document.querySelector(selector);
-const state = { book: null, marketplaceResults: null };
+const state = { book: null, books: [], marketplaceResults: null };
 let scannerLibraryPromise = null;
 let scannerControls = null;
 let scannerStream = null;
@@ -89,13 +89,17 @@ async function requireLogin() {
   return true;
 }
 
-async function loadBooks() {
-  const books = await request("/api/books");
+function renderBookList() {
+  const query = $("#bookSearch").value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("it").trim();
+  const books = state.books.filter(book => !query || `${book.title} ${book.authors} ${book.isbn}`.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("it").includes(query));
   const noCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='230'%3E%3Crect width='100%25' height='100%25' fill='%23e8e1d5'/%3E%3Cpath d='M48 55h64v90H48z' fill='none' stroke='%23756f66' stroke-width='5'/%3E%3Cpath d='M58 72h44M58 88h34M58 104h39' stroke='%23756f66' stroke-width='4'/%3E%3C/svg%3E";
-  $("#bookList").innerHTML = books.length ? books.map(book => `<button class="book-row" data-id="${book.id}"><img src="${escapeHtml(usableCoverUrl(book.cover_url) || noCover)}" alt="Copertina di ${escapeHtml(book.title)}"><span class="book-row-copy"><b>${escapeHtml(book.title)}</b><small>${escapeHtml(book.authors || "Autore non indicato")}</small><em>ISBN ${escapeHtml(book.isbn)}</em></span><span class="book-row-price"><small>Prezzo consigliato</small><strong>${euro(book.analysis?.recommendedPrice)}</strong></span></button>`).join("") : `<p class="empty">Nessun libro ancora valutato.</p>`;
+  $("#bookCount").textContent = query ? `${books.length} di ${state.books.length}` : `${state.books.length} ${state.books.length === 1 ? "libro" : "libri"}`;
+  $("#bookList").innerHTML = books.length ? books.map(book => `<button class="book-row" data-id="${book.id}"><img src="${escapeHtml(usableCoverUrl(book.cover_url) || noCover)}" alt="Copertina di ${escapeHtml(book.title)}"><span class="book-row-copy"><b>${escapeHtml(book.title)}</b><small>${escapeHtml(book.authors || "Autore non indicato")}</small><em>ISBN ${escapeHtml(book.isbn)}</em></span><span class="book-row-price"><small>Prezzo consigliato</small><strong>${euro(book.analysis?.recommendedPrice)}</strong></span></button>`).join("") : `<p class="empty">${query ? "Nessun libro corrisponde alla ricerca." : "Nessun libro ancora valutato."}</p>`;
   document.querySelectorAll(".book-row img").forEach(image => image.addEventListener("error", () => { image.src = noCover; }, { once:true }));
   document.querySelectorAll(".book-row").forEach(button => button.addEventListener("click", () => openBook(button.dataset.id)));
 }
+
+async function loadBooks() { state.books = await request("/api/books"); renderBookList(); }
 
 function showEditor(metadata) {
   $("#startView").hidden = true; $("#editorView").hidden = false;
@@ -222,6 +226,7 @@ $("#photo").addEventListener("change", async event => {
 });
 $("#startScanner").addEventListener("click", startLiveScanner);
 $("#stopScanner").addEventListener("click", () => stopLiveScanner());
+$("#bookSearch").addEventListener("input", renderBookList);
 
 $("#bookForm").addEventListener("submit", async event => {
   event.preventDefault();const submitButton=$("#saveBook");submitButton.disabled=true;submitButton.dataset.state="loading";submitButton.textContent="Salvataggio in corso…";const payload = { isbn:$("#bookIsbn").value,title:$("#title").value,authors:$("#authors").value,publisher:$("#publisher").value,year:$("#year").value,coverUrl:$("#cover").src.startsWith("data:")?"":$("#cover").src,coverPrice:Number($("#coverPrice").value)||null,condition:$("#condition").value,notes:$("#notes").value };
