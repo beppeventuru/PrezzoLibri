@@ -27,17 +27,10 @@
       <div id="workspace" hidden>
         <section class="result-card"><p>PREZZO CONSIGLIATO</p><strong id="recommended">—</strong><div><span>Vendita rapida <b id="quick">—</b></span><span>Massimo realistico <b id="maximum">—</b></span></div><p id="confidence"></p><p id="explanation"></p></section>
         <section><div class="section-heading"><div><p class="kicker">RICERCA AUTOMATICA DIRETTA</p><h2>Confronta i marketplace</h2></div><button id="searchMarketplaces">Cerca i prezzi</button></div><p class="muted">La ricerca dal server non usa OpenAI. Per leggere anche le pagine complete di eBay e AbeBooks, apri questo libro su Chrome desktop e premi l’estensione “PrezzoLibri”.</p><p id="marketStatus" class="status"></p><div id="marketResults" class="market-results"></div><details id="extensionLogPanel" hidden><summary>Log tecnico dell’estensione</summary><pre id="extensionLogs"></pre></details><details><summary>Ricerche manuali di controllo</summary><div id="marketLinks" class="market-links"></div></details></section>
-        <section><div class="section-heading"><div><p class="kicker">CONFRONTI</p><h2>Registra ciò che trovi</h2></div><button id="addComparable">+ Aggiungi</button></div><div id="comparableList"></div></section>
       </div>
     </section>
   </main>
 
-  <dialog id="comparableDialog"><form id="comparableForm" method="dialog"><h2>Nuovo confronto</h2>
-    <label>Piattaforma<select id="platform"><option>vinted</option><option>ebay</option><option>abebooks</option><option>subito</option><option>amazon</option><option>other</option></select></label>
-    <label>Titolo annuncio<input id="compTitle"></label><label>URL<input id="compUrl" type="url"></label>
-    <div class="grid"><label>Prezzo €<input id="compPrice" type="number" min=".01" step=".01" required></label><label>Spedizione €<input id="shipping" type="number" min="0" step=".01" value="0"></label></div>
-    <div class="grid"><label>Pertinenza<select id="relevance"><option value="exact">ISBN esatto</option><option value="high">Stessa edizione</option><option value="medium">Titolo pertinente</option><option value="low">Poco pertinente</option></select></label><label>Tipo di dato<select id="evidenceType"><option value="active">Annuncio attivo</option><option value="sold">Vendita conclusa</option></select></label></div>
-    <div class="actions"><button type="button" id="cancelComparable" class="secondary">Annulla</button><button value="save">Salva confronto</button></div></form></dialog>
   <dialog id="loginDialog" class="login-dialog"><form id="loginForm"><p class="kicker">AREA PRIVATA</p><h2>Accedi a PrezzoLibri</h2><label>Username<input id="loginUsername" autocomplete="username" required></label><label>Password<input id="loginPassword" type="password" autocomplete="current-password" required></label><p id="loginStatus" class="status"></p><button>Accedi</button></form></dialog>
   <script type="module" src="./app.js"></script>
 </body></html>

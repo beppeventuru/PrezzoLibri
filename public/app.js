@@ -113,7 +113,6 @@ function renderWorkspace() {
   const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", amazon:"Amazon" };
   $("#marketLinks").innerHTML = Object.entries(names).map(([key,name]) => `<article><h3>${name}</h3><a href="${b.links[key]}" target="_blank" rel="noopener">In vendita · ISBN ↗</a>${b.links.titleFallback?.[key] ? `<a class="fallback" href="${b.links.titleFallback[key]}" target="_blank" rel="noopener">In vendita · titolo ↗</a>` : ""}${b.links.sold?.[key] ? `<a class="sold-link" href="${b.links.sold[key]}" target="_blank" rel="noopener">Venduti ultimi 90 giorni ↗</a><small class="sold-note">eBay non mostra qui le vendite più vecchie.</small>` : ""}</article>`).join("");
   if (!state.marketplaceResults) $("#marketResults").innerHTML = `<p class="empty">Premi “Cerca i prezzi”: i risultati appariranno direttamente qui.</p>`;
-  $("#comparableList").innerHTML = b.comparables.length ? b.comparables.map(c => `<article class="comparable"><div><b>${c.platform}</b><span>${c.evidence_type === "sold" ? "VENDUTO" : "ATTIVO"}</span><h3>${c.title || "Confronto senza titolo"}</h3><small>${c.relevance.replace("exact","ISBN esatto")} · ${new Date(c.observed_at).toLocaleDateString("it-IT")}</small></div><strong>${euro(c.price + c.shipping)}</strong>${c.url ? `<a href="${c.url}" target="_blank" rel="noopener">Apri ↗</a>`:""}<button class="remove-comparable" data-comparable-id="${c.id}" type="button">Elimina</button></article>`).join("") : `<p class="empty">Nessun confronto: apri i marketplace e aggiungi i risultati pertinenti.</p>`;
 }
 
 function renderMarketplaceResults(results) {
@@ -159,14 +158,6 @@ window.addEventListener("message", async event => {
   } catch (error) { $("#marketStatus").textContent = `Raccolta completata, ma la sincronizzazione non è riuscita: ${error.message}`; }
 });
 
-$("#comparableList").addEventListener("click", async event => {
-  const button = event.target.closest("[data-comparable-id]");
-  if (!button || !confirm("Eliminare questo confronto dal calcolo del prezzo?")) return;
-  button.disabled = true;
-  try { await request(`/api/comparables/${button.dataset.comparableId}`, { method:"DELETE" }); await openBook(state.book.id); }
-  catch (error) { button.disabled = false; alert(error.message); }
-});
-
 $("#isbnForm").addEventListener("submit", async event => {
   event.preventDefault(); $("#isbnStatus").textContent = "Cerco titolo ed edizione…";
   try { const data = await request(`/api/isbn/${encodeURIComponent($("#isbn").value)}`); $("#isbnStatus").textContent = `Trovato tramite ${data.source}`; showEditor(data); }
@@ -195,13 +186,6 @@ $("#stopScanner").addEventListener("click", () => stopLiveScanner());
 $("#bookForm").addEventListener("submit", async event => {
   event.preventDefault(); const payload = { isbn:$("#bookIsbn").value,title:$("#title").value,authors:$("#authors").value,publisher:$("#publisher").value,year:$("#year").value,coverUrl:$("#cover").src.startsWith("data:")?"":$("#cover").src,coverPrice:Number($("#coverPrice").value)||null,condition:$("#condition").value,notes:$("#notes").value };
   const book = await request("/api/books", { method:"POST", body:JSON.stringify(payload) }); await openBook(book.id);
-});
-
-$("#addComparable").addEventListener("click", () => $("#comparableDialog").showModal());
-$("#cancelComparable").addEventListener("click", () => $("#comparableDialog").close());
-$("#comparableForm").addEventListener("submit", async event => {
-  event.preventDefault(); await request(`/api/books/${state.book.id}/comparables`, { method:"POST", body:JSON.stringify({ platform:$("#platform").value,title:$("#compTitle").value,url:$("#compUrl").value,price:Number($("#compPrice").value),shipping:Number($("#shipping").value)||0,relevance:$("#relevance").value,evidenceType:$("#evidenceType").value }) });
-  $("#comparableDialog").close(); event.target.reset(); await openBook(state.book.id);
 });
 
 $("#loginForm").addEventListener("submit", async event => {
