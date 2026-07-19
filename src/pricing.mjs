@@ -90,6 +90,9 @@ export function calculatePrice({ comparables = [], coverPrice = null, condition 
   } else if (vintedCenter != null) {
     market = vintedCenter;
     basis = "annunci Vinted";
+  } else if (libraccioCenter != null) {
+    market = libraccioCenter * 0.9;
+    basis = "prezzi usati Libraccio, adattati alla vendita tra privati su Vinted";
   } else if (ebayCenter != null) {
     market = ebayCenter * 0.9;
     basis = "annunci eBay, ridotti perché non ancora venduti";
@@ -97,10 +100,10 @@ export function calculatePrice({ comparables = [], coverPrice = null, condition 
     market = subitoCenter * 0.9;
     basis = "annunci Subito, ridotti perché non ancora venduti";
   } else {
-    const secondary = [libraccioCenter, ibsCenter, amazonCenter, abeCenter].filter(value => value != null);
+    const secondary = [ibsCenter, amazonCenter, abeCenter].filter(value => value != null);
     if (secondary.length) {
       market = Math.min(...secondary) * 0.75;
-      basis = "prezzo più prudente tra Libraccio, IBS, Amazon e AbeBooks";
+      basis = "prezzo più prudente tra IBS, Amazon e AbeBooks";
     }
   }
 
@@ -114,7 +117,7 @@ export function calculatePrice({ comparables = [], coverPrice = null, condition 
   const unadjusted = market ?? local ?? 5;
   const recommended = market == null ? unadjusted : unadjusted * targetConditionFactor;
 
-  const targetUpper = upperPrice(vinted) ?? upperPrice(ebayActive) ?? upperPrice(sold) ?? upperPrice(subito);
+  const targetUpper = upperPrice(vinted) ?? upperPrice(sold) ?? upperPrice(libraccio) ?? upperPrice(ebayActive) ?? upperPrice(subito);
   const maximumBase = targetUpper == null ? recommended * 1.25 : Math.max(recommended, targetUpper * targetConditionFactor);
   const maximum = Math.min(maximumBase, recommended * (disagreement ? 1.25 : 1.5));
   let confidence = "low";

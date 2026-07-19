@@ -93,3 +93,13 @@ test("su IBS privilegia le offerte usate rispetto a quelle nuove", () => {
   ]});
   assert.equal(result.recommendedPrice, 5);
 });
+
+test("Libraccio prevale sulle indicazioni secondarie", () => {
+  const result = calculatePrice({ comparables:[
+    { platform:"libraccio", price:10, condition:"Usato selezionato da Libraccio", relevance:"exact", evidenceType:"active" },
+    { platform:"ibs", price:18, condition:"In buone condizioni", relevance:"exact", evidenceType:"active" },
+    { platform:"amazon", price:24, condition:"Usato - Buone condizioni", relevance:"exact", evidenceType:"active" }
+  ]});
+  assert.equal(result.recommendedPrice, 9);
+  assert.match(result.basis, /Libraccio/);
+});
