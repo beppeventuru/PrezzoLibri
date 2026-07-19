@@ -23,6 +23,8 @@
 .listing { display:grid; grid-template-columns:1fr auto auto; gap:16px; align-items:center; border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }
 .listing small { display:block; color:#73766f; margin-top:4px; }
 .listing a { color:var(--orange); font-weight:800; }
+.listing-price { display:flex; flex-direction:column; align-items:flex-end; white-space:nowrap; }
+.listing-price small { margin-top:.18rem; color:#73766f; font-size:.76rem; font-weight:600; }
 details { margin-top:20px; }
 details pre { max-height:360px; overflow:auto; white-space:pre-wrap; background:#172d24; color:#e8f2ec; border-radius:10px; padding:14px; font-size:12px; }
 summary { cursor:pointer; color:var(--green); font-weight:800; }

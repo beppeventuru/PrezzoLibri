@@ -11,7 +11,7 @@ create table if not exists public.comparables (
   book_id bigint not null references public.books(id) on delete cascade,
   platform text not null, url text not null default '', title text not null default '', price numeric not null,
   shipping numeric not null default 0, condition text not null default '', relevance text not null default 'medium',
-  evidence_type text not null default 'active', accepted boolean not null default true, observed_at timestamptz not null default now()
+  evidence_type text not null default 'active', date_label text not null default '', accepted boolean not null default true, observed_at timestamptz not null default now()
 );
 alter table public.books enable row level security;
 alter table public.comparables enable row level security;

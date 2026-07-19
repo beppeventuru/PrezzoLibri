@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrezzoLibri - Raccolta marketplace",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Legge nel tuo Chrome i prezzi dei libri cercati da PrezzoLibri.",
   "permissions": ["tabs"],
   "host_permissions": [

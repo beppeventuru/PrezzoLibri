@@ -29,9 +29,11 @@ db.exec(`
     platform TEXT NOT NULL, url TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '',
     price REAL NOT NULL, shipping REAL NOT NULL DEFAULT 0, condition TEXT NOT NULL DEFAULT '',
     relevance TEXT NOT NULL DEFAULT 'medium', evidence_type TEXT NOT NULL DEFAULT 'active',
+    date_label TEXT NOT NULL DEFAULT '',
     accepted INTEGER NOT NULL DEFAULT 1, observed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+try { db.exec("ALTER TABLE comparables ADD COLUMN date_label TEXT NOT NULL DEFAULT ''"); } catch {}
 
 const PORT = Number(process.env.PORT || 4180);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -231,8 +233,8 @@ async function api(req, res, url) {
   if (req.method === "POST" && compMatch) {
     const id = Number(compMatch[1]); if (!q("SELECT id FROM books WHERE id=?").get(id)) return json(res, 404, { error: "Libro non trovato" });
     const input = await body(req); if (!(Number(input.price) > 0)) return json(res, 400, { error: "Prezzo non valido" });
-    const result = q(`INSERT INTO comparables(book_id,platform,url,title,price,shipping,condition,relevance,evidence_type,accepted)
-      VALUES(?,?,?,?,?,?,?,?,?,?)`).run(id, input.platform, input.url || "", input.title || "", Number(input.price), Number(input.shipping || 0), input.condition || "", input.relevance || "medium", input.evidenceType || "active", input.accepted === false ? 0 : 1);
+    const result = q(`INSERT INTO comparables(book_id,platform,url,title,price,shipping,condition,relevance,evidence_type,date_label,accepted)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(id, input.platform, input.url || "", input.title || "", Number(input.price), Number(input.shipping || 0), input.condition || "", input.relevance || "medium", input.evidenceType || "active", input.dateLabel || "", input.accepted === false ? 0 : 1);
     return json(res, 201, q("SELECT * FROM comparables WHERE id=?").get(result.lastInsertRowid));
   }
   const searchMatch = url.pathname.match(/^\/api\/books\/(\d+)\/search-marketplaces$/);
@@ -244,8 +246,8 @@ async function api(req, res, url) {
     let added = 0;
     for (const result of results) for (const item of result.listings) {
       if (q("SELECT id FROM comparables WHERE book_id=? AND url=?").get(id, item.url)) continue;
-      q(`INSERT INTO comparables(book_id,platform,url,title,price,shipping,condition,relevance,evidence_type,accepted)
-        VALUES(?,?,?,?,?,?,?,?,?,1)`).run(id, item.platform, item.url, item.title, item.price, item.shipping, item.condition, item.relevance, item.evidenceType);
+      q(`INSERT INTO comparables(book_id,platform,url,title,price,shipping,condition,relevance,evidence_type,date_label,accepted)
+        VALUES(?,?,?,?,?,?,?,?,?,?,1)`).run(id, item.platform, item.url, item.title, item.price, item.shipping, item.condition, item.relevance, item.evidenceType, item.dateLabel || "");
       added++;
     }
     return json(res, 200, { results, added });
