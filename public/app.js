@@ -240,6 +240,6 @@ $("#logout").addEventListener("click", async () => {
   stopLiveScanner(); await request("/api/session", { method:"DELETE" }); state.book = null; $("#loginForm").reset(); $("#loginDialog").showModal();
 });
 
-function home(){ stopLiveScanner(); $("#editorView").hidden=true;$("#startView").hidden=false;loadBooks(); }
+function home(){ stopLiveScanner();$("#editorView").hidden=true;$("#startView").hidden=false;loadBooks();requestAnimationFrame(()=>{$("#isbn").focus();$("#isbn").select();}); }
 $("#homeLink").addEventListener("click",event=>{event.preventDefault();home();window.scrollTo({top:0,behavior:"smooth"});});$("#back").addEventListener("click",home);$("#newBook").addEventListener("click",()=>{showEditor({});$("#editorView").hidden=true;$("#startView").hidden=false;$("#isbn").focus();});
 requireLogin().then(ok => { if (ok) loadBooks(); }).catch(error => { $("#loginStatus").textContent = error.message; $("#loginDialog").showModal(); });
