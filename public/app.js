@@ -153,7 +153,8 @@ $("#searchMarketplaces").addEventListener("click", async () => {
     const data = await request(`/api/books/${state.book.id}/search-marketplaces`, { method:"POST", body:"{}" });
     state.marketplaceResults = data.results; renderMarketplaceResults(data.results);
     const found = data.results.reduce((total, result) => total + result.listings.length, 0);
-    $("#marketStatus").textContent = data.added ? `${found} prezzi letti direttamente; ${data.added} nuovi confronti aggiunti. Prezzo ricalcolato.` : `Ricerca diretta completata: ${found} prezzi letti, nessun nuovo confronto.`;
+    const cleanup = data.removedDuplicates ? ` Rimossi ${data.removedDuplicates} duplicati.` : "";
+    $("#marketStatus").textContent = data.added ? `${found} prezzi letti direttamente; ${data.added} nuovi confronti aggiunti.${cleanup} Prezzo ricalcolato.` : `Ricerca diretta completata: ${found} prezzi letti, nessun nuovo confronto.${cleanup}`;
     await openBook(state.book.id); state.marketplaceResults = data.results; renderMarketplaceResults(data.results);
   } catch (error) { $("#marketStatus").textContent = error.message; }
   finally { button.disabled = false; }
@@ -176,7 +177,8 @@ window.addEventListener("message", async event => {
     await openBook(state.book.id);
     state.marketplaceResults = data.results;
     renderMarketplaceResults(data.results);
-    $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome; ${imported.added} nuovi confronti aggiunti.`;
+    const cleanup = imported.removedDuplicates ? ` Rimossi ${imported.removedDuplicates} duplicati.` : "";
+    $("#marketStatus").textContent = `${found} prezzi letti dal tuo Chrome; ${imported.added} nuovi confronti aggiunti.${cleanup}`;
   } catch (error) { $("#marketStatus").textContent = `Raccolta completata, ma la sincronizzazione non è riuscita: ${error.message}`; }
   finally { $("#searchMarketplaces").disabled = false; }
 });
