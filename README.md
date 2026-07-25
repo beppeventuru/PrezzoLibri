@@ -10,17 +10,15 @@ Il frontend in `public/` è predisposto per GitHub Pages. Il backend online usa 
 1. eseguire `supabase/schema.sql` nel SQL Editor;
 2. creare un utente Auth con email `<username>@prezzolibri.local`;
 3. distribuire le funzioni `isbn-lookup` e `marketplace-search`;
-4. impostare `OPENAI_API_KEY` e `OPENAI_MODEL` come segreti della funzione;
+4. impostare `GOOGLE_BOOKS_API_KEY` come segreto della funzione;
 5. inserire URL del progetto e chiave anon pubblica in `public/config.js`.
-
-La chiave OpenAI non deve mai essere inserita in `public/config.js` o nel repository.
 
 ## Funzionamento
 
 1. Inserimento o lettura del barcode ISBN da una foto (quando supportato dal browser).
 2. Lettura gratuita del barcode con BarcodeDetector o ZXing, come in LibreriaCasa.
 3. Recupero dei metadati da Google Books, con Open Library come fallback.
-4. Ricerca diretta su Vinted, eBay, AbeBooks, Subito, Libraccio, IBS e Amazon tramite l'estensione Chrome, senza OpenAI.
+4. Ricerca diretta su Vinted, eBay, AbeBooks, Subito, Libraccio, IBS e Amazon tramite l'estensione Chrome.
 5. Controllo umano di ISBN, edizione, formato e condizioni.
 6. Registrazione di annunci attivi o vendite concluse.
 7. Calcolo di prezzo per vendita rapida, consigliato e massimo realistico.
@@ -31,8 +29,8 @@ una ricerca ISBN e possono mostrare edizioni diverse.
 
 ## Avvio
 
-Prima copia `.env.example` in `.env` e inserisci la tua chiave in `OPENAI_API_KEY`.
-Imposta inoltre `APP_USERNAME` e `APP_PASSWORD`: tutte le API dell'app saranno protette da una sessione locale.
+Prima copia `.env.example` in `.env`.
+Imposta `APP_USERNAME` e `APP_PASSWORD`: tutte le API dell'app saranno protette da una sessione locale.
 
 ```powershell
 cd C:\Users\Utente\Documents\Playground\PrezzoLibri

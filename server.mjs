@@ -40,8 +40,6 @@ const HOST = process.env.HOST || "127.0.0.1";
 const googleEnabled = process.env.GOOGLE_BOOKS_ENABLED !== "false";
 const openLibraryEnabled = process.env.OPEN_LIBRARY_ENABLED !== "false";
 const googleKey = process.env.GOOGLE_BOOKS_API_KEY || "";
-const openAiKey = process.env.OPENAI_API_KEY || "";
-const openAiModel = process.env.OPENAI_MODEL || "gpt-5.4-mini";
 const appUsername = process.env.APP_USERNAME || "";
 const appPassword = process.env.APP_PASSWORD || "";
 const sessions = new Map();
@@ -130,48 +128,6 @@ function searchLinks(book) {
   };
 }
 
-function parseJsonAnswer(response) {
-  const text = response.output?.flatMap(item => item.content || [])
-    .filter(item => item.type === "output_text").map(item => item.text).join("\n") || "";
-  return JSON.parse(text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
-}
-
-async function searchMarketplaces(book) {
-  if (!openAiKey) throw new Error("OPENAI_API_KEY non configurata. Inseriscila nel file .env e riavvia l'app.");
-  const platforms = ["vinted", "ebay", "abebooks", "subito", "amazon"];
-  const prompt = `Cerca sul web offerte attualmente visibili in Italia per questo preciso libro usato:
-ISBN-13: ${book.isbn}
-Titolo: ${book.title}
-Autore: ${book.authors}
-Editore: ${book.publisher}
-Anno: ${book.year}
-
-Cerca separatamente su Vinted.it, eBay.it, AbeBooks.it, Subito.it e Amazon.it. Dai priorita assoluta all'ISBN esatto; non attribuire l'ISBN a un annuncio se non e visibile nella pagina o nello snippet. Per Amazon includi anche il prezzo nuovo. Non inventare risultati, prezzi, spedizioni o URL. Se un sito non restituisce un'offerta verificabile, usa status "not_found".
-
-Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown:
-{"results":[{"platform":"vinted|ebay|abebooks|subito|amazon","status":"found|not_found|blocked","note":"breve spiegazione","listings":[{"title":"titolo annuncio","price":9.9,"shipping":0,"currency":"EUR","url":"https://...","relevance":"exact|high|medium|low","condition":"condizioni o spedizione non nota","evidenceType":"active|sold"}]}]}
-Massimo 5 offerte per sito. Solo prezzi EUR. Se la spedizione non e nota usa 0 e indicalo in condition.`;
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${openAiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: openAiModel, tools: [{ type: "web_search" }], input: prompt }),
-    signal: AbortSignal.timeout(120000)
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || `OpenAI ${response.status}`);
-  const byPlatform = new Map((parseJsonAnswer(data).results || []).map(result => [String(result.platform).toLowerCase(), result]));
-  return platforms.map(platform => {
-    const result = byPlatform.get(platform) || { status: "not_found", note: "Nessun risultato restituito", listings: [] };
-    const listings = (Array.isArray(result.listings) ? result.listings : []).filter(item =>
-      Number(item.price) > 0 && item.currency === "EUR" && /^https?:\/\//.test(item.url || "")
-    ).slice(0, 5).map(item => ({ platform, title: String(item.title || ""), price: Number(item.price),
-      shipping: Math.max(0, Number(item.shipping) || 0), url: String(item.url),
-      relevance: ["exact","high","medium","low"].includes(item.relevance) ? item.relevance : "medium",
-      condition: String(item.condition || ""), evidenceType: item.evidenceType === "sold" ? "sold" : "active" }));
-    return { platform, status: listings.length ? "found" : (result.status || "not_found"), note: String(result.note || ""), listings };
-  });
-}
-
 async function api(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/session") {
     return json(res, 200, { authenticated: authenticated(req), configured: Boolean(appUsername && appPassword) });
@@ -242,15 +198,7 @@ async function api(req, res, url) {
     const id = Number(searchMatch[1]);
     const book = q("SELECT * FROM books WHERE id=?").get(id);
     if (!book) return json(res, 404, { error: "Libro non trovato" });
-    const results = await searchMarketplaces(book);
-    let added = 0;
-    for (const result of results) for (const item of result.listings) {
-      if (q("SELECT id FROM comparables WHERE book_id=? AND url=?").get(id, item.url)) continue;
-      q(`INSERT INTO comparables(book_id,platform,url,title,price,shipping,condition,relevance,evidence_type,date_label,accepted)
-        VALUES(?,?,?,?,?,?,?,?,?,?,1)`).run(id, item.platform, item.url, item.title, item.price, item.shipping, item.condition, item.relevance, item.evidenceType, item.dateLabel || "");
-      added++;
-    }
-    return json(res, 200, { results, added });
+    return json(res, 503, { error: "Ricerca locale dal server non disponibile: usa l'estensione PrezzoLibri in Chrome." });
   }
   return json(res, 404, { error: "Risorsa non trovata" });
 }
