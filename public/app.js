@@ -9,6 +9,7 @@ const batchEntries = new Map();
 const batchPriceQueue = [];
 let batchPriceActive = 0;
 let batchRunning = false;
+let booksLoadSequence = 0;
 let scannerLibraryPromise = null;
 let scannerControls = null;
 let scannerStream = null;
@@ -106,7 +107,14 @@ function renderBookList() {
   document.querySelectorAll(".book-row").forEach(button => button.addEventListener("click", () => openBook(button.dataset.id)));
 }
 
-async function loadBooks() { state.books = await request("/api/books"); renderBookList(); }
+async function loadBooks() {
+  const sequence = ++booksLoadSequence;
+  const books = await request("/api/books");
+  if (sequence !== booksLoadSequence) return false;
+  state.books = books;
+  renderBookList();
+  return true;
+}
 
 function parseBatchIsbns(value) {
   const candidates = String(value || "").split(/[\s,;]+/).map(item => item.replace(/[^0-9X]/gi, "").toUpperCase()).filter(Boolean);
@@ -330,7 +338,7 @@ window.addEventListener("message", async event => {
         const found = (data.results || []).reduce((total, result) => total + (result.listings || []).length, 0);
         updateBatchEntry(data.isbn, { stage:`Salvo ${found} prezzi…`, className:"is-running" });
         await request(`/api/books/${batchEntry.book.id}/import-marketplaces`, { method:"POST", body:JSON.stringify({ results:data.results || [], coverUrl:data.coverUrl || "" }) });
-        updateBatchEntry(data.isbn, { stage:`Completato · ${found} prezzi`, className:"is-done" });
+        updateBatchEntry(data.isbn, { stage:`Completato · ${found} ${found === 1 ? "prezzo" : "prezzi"}`, className:"is-done" });
         await loadBooks();
       } catch (error) {
         updateBatchEntry(data.isbn, { stage:`Sincronizzazione non riuscita: ${error.message}`, className:"is-error" });
@@ -441,6 +449,9 @@ $("#logout").addEventListener("click", async () => {
 
 function home(){ stopLiveScanner();history.replaceState(null,"",`${location.pathname}${location.hash}`);$("#editorView").hidden=true;$("#startView").hidden=false;loadBooks();requestAnimationFrame(()=>{$("#isbn").focus();$("#isbn").select();}); }
 $("#homeLink").addEventListener("click",event=>{event.preventDefault();home();window.scrollTo({top:0,behavior:"smooth"});});$("#back").addEventListener("click",home);$("#newBook").addEventListener("click",()=>{showEditor({});$("#editorView").hidden=true;$("#startView").hidden=false;$("#isbn").focus();});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && !$("#startView").hidden && !$("#loginDialog").open) loadBooks().catch(() => {});
+});
 async function loadInitialView() {
   await loadBooks();
   const requestedBook = new URLSearchParams(location.search).get("book");
