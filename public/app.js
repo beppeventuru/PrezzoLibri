@@ -374,7 +374,7 @@ window.addEventListener("message", async event => {
 
 $("#isbnForm").addEventListener("submit", async event => {
   event.preventDefault(); $("#isbnStatus").textContent = "Cerco titolo ed edizione…";
-  try { const data = await request(`/api/isbn/${encodeURIComponent($("#isbn").value)}`); $("#isbnStatus").textContent = `Trovato tramite ${data.source}`; showEditor(data); }
+  try { const data = await request(`/api/isbn/${encodeURIComponent($("#isbn").value)}`); $("#isbnStatus").textContent = `Trovato tramite ${data.source || "i cataloghi disponibili"}`; showEditor(data); }
   catch (error) {
     const isbn = $("#isbn").value.replace(/[^0-9X]/gi, "");
     if (/^(?:97[89]\d{10}|\d{9}[\dX])$/i.test(isbn)) { showEditor({ isbn }); $("#isbnStatus").textContent = `${error.message}. Completa titolo e autore manualmente.`; }

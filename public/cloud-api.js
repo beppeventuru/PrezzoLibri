@@ -116,6 +116,16 @@ async function fillMissingCovers(db, books) {
   }));
 }
 
+async function allComparablesForBooks(db, bookIds) {
+  const rows = [], pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db.from("comparables").select("*").in("book_id", bookIds).range(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) return rows;
+  }
+}
+
 async function cloudRequest(path, options={}) {
   const db = await client(); const method = options.method || "GET"; const input = JSON.parse(options.body || "{}");
   if (path === "/api/session" && method === "GET") { const { data }=await db.auth.getSession(); return { authenticated:Boolean(data.session), configured:true }; }
@@ -123,10 +133,12 @@ async function cloudRequest(path, options={}) {
   if (path === "/api/session" && method === "DELETE") { await db.auth.signOut(); return {authenticated:false}; }
   const isbnMatch=path.match(/^\/api\/isbn\/(.+)$/); if(isbnMatch){
     const isbn=decodeURIComponent(isbnMatch[1]);let serverError;
-    try{const {data,error}=await db.functions.invoke("isbn-lookup",{body:{isbn}});if(!error&&!data?.error)return data;serverError=new Error(data?.error||error?.message||"Ricerca ISBN non disponibile");}catch(error){serverError=error;}
+    const {data:savedBook}=await db.from("books").select("isbn,title,authors,publisher,year,cover_url,cover_price").eq("isbn",isbn).maybeSingle();
+    if(savedBook?.title)return{isbn:savedBook.isbn,title:savedBook.title,authors:savedBook.authors||"",publisher:savedBook.publisher||"",year:savedBook.year||"",coverUrl:savedBook.cover_url||"",coverPrice:savedBook.cover_price??null,source:"archivio PrezzoLibri"};
+    try{const {data,error}=await db.functions.invoke("isbn-lookup",{body:{isbn}});if(!error&&!data?.error)return{...data,source:data.source||"cataloghi ISBN"};serverError=new Error(data?.error||error?.message||"Ricerca ISBN non disponibile");}catch(error){serverError=error;}
     try{return await directIsbnLookup(isbn)}catch{throw serverError;}
   }
-  if(path==="/api/books"&&method==="GET"){const {data:books,error}=await db.from("books").select("*").order("updated_at",{ascending:false});if(error)throw error;if(!books?.length)return[];const {data:comparables,error:compError}=await db.from("comparables").select("*").in("book_id",books.map(book=>book.id));if(compError)throw compError;return books.map(book=>({...book,analysis:analysis(book,(comparables||[]).filter(item=>item.book_id===book.id))}));}
+  if(path==="/api/books"&&method==="GET"){const {data:books,error}=await db.from("books").select("*").order("updated_at",{ascending:false});if(error)throw error;if(!books?.length)return[];const comparables=await allComparablesForBooks(db,books.map(book=>book.id));return books.map(book=>({...book,analysis:analysis(book,comparables.filter(item=>item.book_id===book.id))}));}
   if(path==="/api/books"&&method==="POST"){const {data:{user}}=await db.auth.getUser();const row={user_id:user.id,isbn:input.isbn,title:input.title,authors:input.authors||"",publisher:input.publisher||"",year:input.year||"",cover_url:input.coverUrl||"",cover_price:input.coverPrice||null,condition:input.condition||"good",notes:input.notes||"",updated_at:new Date().toISOString()};const {data,error}=await db.from("books").upsert(row,{onConflict:"user_id,isbn"}).select().single();if(error)throw error;return data;}
   const bookMatch=path.match(/^\/api\/books\/(\d+)$/);if(bookMatch&&method==="GET"){const {data:book,error}=await db.from("books").select("*").eq("id",bookMatch[1]).single();if(error)throw error;const {data:comparables,error:compError}=await db.from("comparables").select("*").eq("book_id",book.id).order("observed_at",{ascending:false});if(compError)throw compError;return {...book,comparables,links:links(book),analysis:analysis(book,comparables)};}
   const compMatch=path.match(/^\/api\/books\/(\d+)\/comparables$/);if(compMatch&&method==="POST"){const row={book_id:Number(compMatch[1]),platform:input.platform,url:input.url||"",title:input.title||"",price:Number(input.price),shipping:Number(input.shipping||0),condition:input.condition||"",relevance:input.relevance||"medium",evidence_type:input.evidenceType||"active",date_label:input.dateLabel||"",accepted:input.accepted!==false};const {data,error}=await db.from("comparables").insert(row).select().single();if(error)throw error;return data;}
