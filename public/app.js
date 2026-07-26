@@ -127,6 +127,20 @@ function renderBatchEntry(entry) {
   row.querySelector("strong").textContent = entry.title || entry.isbn;
   row.querySelector("small").textContent = entry.title ? `${entry.authors || "Autore non indicato"} · ISBN ${entry.isbn}` : entry.detail || "";
   row.querySelector(".batch-stage").textContent = entry.stage || "In attesa";
+  if (entry.book?.id) {
+    row.classList.add("is-clickable");
+    row.setAttribute("role", "link");
+    row.setAttribute("tabindex", "0");
+    row.setAttribute("aria-label", `Apri ${entry.title || entry.isbn} in una nuova scheda`);
+    row.onclick = () => {
+      const url = new URL(location.href);
+      url.searchParams.set("book", entry.book.id);
+      window.open(url, "_blank", "noopener");
+    };
+    row.onkeydown = event => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); row.click(); }
+    };
+  }
 }
 
 function updateBatchEntry(isbn, changes) {
@@ -416,7 +430,7 @@ $("#loginForm").addEventListener("submit", async event => {
   event.preventDefault(); $("#loginStatus").textContent = "Accesso in corso…";
   try {
     await request("/api/session", { method:"POST", body:JSON.stringify({ username:$("#loginUsername").value, password:$("#loginPassword").value }) });
-    $("#loginPassword").value = ""; $("#loginDialog").close(); await loadBooks();
+    $("#loginPassword").value = ""; $("#loginDialog").close(); await loadInitialView();
   } catch (error) { $("#loginStatus").textContent = error.message; }
 });
 $("#loginDialog").addEventListener("cancel", event => event.preventDefault());
@@ -425,6 +439,11 @@ $("#logout").addEventListener("click", async () => {
   stopLiveScanner(); await request("/api/session", { method:"DELETE" }); state.book = null; $("#loginForm").reset(); $("#loginDialog").showModal();
 });
 
-function home(){ stopLiveScanner();$("#editorView").hidden=true;$("#startView").hidden=false;loadBooks();requestAnimationFrame(()=>{$("#isbn").focus();$("#isbn").select();}); }
+function home(){ stopLiveScanner();history.replaceState(null,"",`${location.pathname}${location.hash}`);$("#editorView").hidden=true;$("#startView").hidden=false;loadBooks();requestAnimationFrame(()=>{$("#isbn").focus();$("#isbn").select();}); }
 $("#homeLink").addEventListener("click",event=>{event.preventDefault();home();window.scrollTo({top:0,behavior:"smooth"});});$("#back").addEventListener("click",home);$("#newBook").addEventListener("click",()=>{showEditor({});$("#editorView").hidden=true;$("#startView").hidden=false;$("#isbn").focus();});
-requireLogin().then(ok => { if (ok) loadBooks(); }).catch(error => { $("#loginStatus").textContent = error.message; $("#loginDialog").showModal(); });
+async function loadInitialView() {
+  await loadBooks();
+  const requestedBook = new URLSearchParams(location.search).get("book");
+  if (requestedBook) await openBook(requestedBook);
+}
+requireLogin().then(ok => { if (ok) loadInitialView(); }).catch(error => { $("#loginStatus").textContent = error.message; $("#loginDialog").showModal(); });
