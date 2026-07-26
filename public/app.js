@@ -2,6 +2,13 @@ import { request } from "./cloud-api.js";
 
 const $ = selector => document.querySelector(selector);
 const state = { book: null, books: [], marketplaceResults: null };
+const BATCH_MAX_BOOKS = 10;
+const BATCH_METADATA_CONCURRENCY = 4;
+const BATCH_PRICE_CONCURRENCY = 2;
+const batchEntries = new Map();
+const batchPriceQueue = [];
+let batchPriceActive = 0;
+let batchRunning = false;
 let scannerLibraryPromise = null;
 let scannerControls = null;
 let scannerStream = null;
@@ -101,6 +108,126 @@ function renderBookList() {
 
 async function loadBooks() { state.books = await request("/api/books"); renderBookList(); }
 
+function parseBatchIsbns(value) {
+  const candidates = String(value || "").split(/[\s,;]+/).map(item => item.replace(/[^0-9X]/gi, "").toUpperCase()).filter(Boolean);
+  const valid = [...new Set(candidates.filter(item => /^(?:97[89]\d{10}|\d{9}[\dX])$/.test(item)))];
+  return { valid:valid.slice(0, BATCH_MAX_BOOKS), invalid:candidates.filter(item => !/^(?:97[89]\d{10}|\d{9}[\dX])$/.test(item)), excess:Math.max(0, valid.length - BATCH_MAX_BOOKS) };
+}
+
+function renderBatchEntry(entry) {
+  let row = document.querySelector(`.batch-item[data-isbn="${CSS.escape(entry.isbn)}"]`);
+  if (!row) {
+    row = document.createElement("article");
+    row.className = "batch-item";
+    row.dataset.isbn = entry.isbn;
+    row.innerHTML = `<div><strong>${escapeHtml(entry.isbn)}</strong><small></small></div><span class="batch-stage"></span>`;
+    $("#batchResults").append(row);
+  }
+  row.className = `batch-item ${entry.className || ""}`;
+  row.querySelector("strong").textContent = entry.title || entry.isbn;
+  row.querySelector("small").textContent = entry.title ? `${entry.authors || "Autore non indicato"} · ISBN ${entry.isbn}` : entry.detail || "";
+  row.querySelector(".batch-stage").textContent = entry.stage || "In attesa";
+}
+
+function updateBatchEntry(isbn, changes) {
+  const entry = batchEntries.get(isbn);
+  if (!entry) return null;
+  Object.assign(entry, changes);
+  renderBatchEntry(entry);
+  return entry;
+}
+
+async function runPool(items, limit, worker) {
+  let cursor = 0;
+  const runners = Array.from({ length:Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
+}
+
+function startExtensionForBook(book) {
+  const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  return new Promise(resolve => {
+    const timeout = setTimeout(() => { window.removeEventListener("message", receive); resolve(false); }, 1400);
+    function receive(event) {
+      const data = event.data;
+      if (event.origin !== location.origin || data?.source !== "prezzolibri-extension" || data.type !== "ACCEPTED" || data.requestId !== requestId) return;
+      clearTimeout(timeout); window.removeEventListener("message", receive); resolve(Boolean(data.ok));
+    }
+    window.addEventListener("message", receive);
+    window.postMessage({ source:"prezzolibri-app", type:"QUEUE_EXTENSION_BOOK", requestId, book:{ isbn:book.isbn, title:book.title, authors:book.authors || "" } }, location.origin);
+  });
+}
+
+function releaseBatchPriceSlot(entry) {
+  if (!entry?.priceSlot) return;
+  entry.priceSlot = false;
+  clearTimeout(entry.priceTimeout);
+  batchPriceActive = Math.max(0, batchPriceActive - 1);
+  pumpBatchPriceQueue();
+  if (!batchPriceActive && !batchPriceQueue.length && !batchRunning) {
+    $("#batchStart").disabled = false;
+    const completed = [...batchEntries.values()].filter(item => item.className === "is-done").length;
+    const errors = [...batchEntries.values()].filter(item => item.className === "is-error").length;
+    $("#batchStatus").textContent = `Ricerca multipla conclusa: ${completed} completati${errors ? `, ${errors} da controllare` : ""}.`;
+  }
+}
+
+async function runServerBatchPrice(entry) {
+  try {
+    updateBatchEntry(entry.isbn, { stage:"Ricerca prezzi dal server…", className:"is-running" });
+    await request(`/api/books/${entry.book.id}/search-marketplaces`, { method:"POST", body:"{}" });
+    updateBatchEntry(entry.isbn, { stage:"Valutazione completata", className:"is-done" });
+  } catch (error) {
+    updateBatchEntry(entry.isbn, { stage:`Prezzi non disponibili: ${error.message}`, className:"is-error" });
+  } finally {
+    releaseBatchPriceSlot(entry);
+    loadBooks().catch(() => {});
+  }
+}
+
+function pumpBatchPriceQueue() {
+  while (batchPriceActive < BATCH_PRICE_CONCURRENCY && batchPriceQueue.length) {
+    const entry = batchPriceQueue.shift();
+    if (!entry || entry.priceStarted) continue;
+    entry.priceStarted = true; entry.priceSlot = true; batchPriceActive += 1;
+    updateBatchEntry(entry.isbn, { stage:"Avvio ricerca prezzi…", className:"is-running" });
+    startExtensionForBook(entry.book).then(accepted => {
+      if (!accepted) return runServerBatchPrice(entry);
+      updateBatchEntry(entry.isbn, { stage:"Marketplace in elaborazione…", className:"is-running" });
+      entry.priceTimeout = setTimeout(() => {
+        updateBatchEntry(entry.isbn, { stage:"Tempo scaduto; puoi riprovare dalla scheda", className:"is-error" });
+        releaseBatchPriceSlot(entry);
+      }, 6 * 60 * 1000);
+    });
+  }
+}
+
+function queueBatchPrice(entry) {
+  batchPriceQueue.push(entry);
+  pumpBatchPriceQueue();
+}
+
+async function identifyBatchBook(isbn) {
+  updateBatchEntry(isbn, { stage:"Cerco titolo ed edizione…", className:"is-running" });
+  try {
+    const metadata = await request(`/api/isbn/${encodeURIComponent(isbn)}`);
+    if (!metadata.title) throw new Error("titolo non trovato");
+    const existing = state.books.find(book => book.isbn === isbn);
+    const book = existing || await request("/api/books", { method:"POST", body:JSON.stringify({
+      isbn:metadata.isbn || isbn, title:metadata.title, authors:metadata.authors || "", publisher:metadata.publisher || "",
+      year:metadata.year || "", coverUrl:metadata.coverUrl || "", coverPrice:metadata.coverPrice ?? null, condition:"good", notes:""
+    }) });
+    const entry = updateBatchEntry(isbn, { book, title:book.title || metadata.title, authors:book.authors || metadata.authors || "", stage:"Identificato · in coda prezzi", className:"is-running" });
+    queueBatchPrice(entry);
+  } catch (error) {
+    updateBatchEntry(isbn, { stage:`Libro non identificato: ${error.message}`, className:"is-error" });
+  }
+}
+
 function showEditor(metadata) {
   $("#startView").hidden = true; $("#editorView").hidden = false;
   $("#bookId").value = metadata.id || ""; $("#bookIsbn").value = metadata.isbn || ""; $("#title").value = metadata.title || "";
@@ -176,6 +303,27 @@ $("#searchMarketplaces").addEventListener("click", async () => {
 window.addEventListener("message", async event => {
   const data = event.data;
   if (event.origin !== location.origin || data?.source !== "prezzolibri-extension") return;
+  const batchEntry = data.isbn ? batchEntries.get(data.isbn) : null;
+  if (batchEntry?.book) {
+    if (data.type === "PROGRESS") { updateBatchEntry(data.isbn, { stage:data.message || "Marketplace in elaborazione…", className:"is-running" }); return; }
+    if (data.type === "ERROR") {
+      updateBatchEntry(data.isbn, { stage:`Ricerca interrotta: ${data.error || "errore sconosciuto"}`, className:"is-error" });
+      releaseBatchPriceSlot(batchEntry);
+      return;
+    }
+    if (data.type === "COMPLETE") {
+      try {
+        const found = (data.results || []).reduce((total, result) => total + (result.listings || []).length, 0);
+        updateBatchEntry(data.isbn, { stage:`Salvo ${found} prezzi…`, className:"is-running" });
+        await request(`/api/books/${batchEntry.book.id}/import-marketplaces`, { method:"POST", body:JSON.stringify({ results:data.results || [], coverUrl:data.coverUrl || "" }) });
+        updateBatchEntry(data.isbn, { stage:`Completato · ${found} prezzi`, className:"is-done" });
+        await loadBooks();
+      } catch (error) {
+        updateBatchEntry(data.isbn, { stage:`Sincronizzazione non riuscita: ${error.message}`, className:"is-error" });
+      } finally { releaseBatchPriceSlot(batchEntry); }
+      return;
+    }
+  }
   if (data.type === "ERROR") { $("#marketStatus").textContent = `Estensione interrotta: ${data.error || "errore sconosciuto"}`; $("#searchMarketplaces").disabled = false; return; }
   if (data.type === "PROGRESS") { $("#marketStatus").textContent = data.message; return; }
   if (data.type !== "COMPLETE" || !state.book || data.isbn !== state.book.isbn) return;
@@ -210,6 +358,37 @@ $("#isbnForm").addEventListener("submit", async event => {
     if (/^(?:97[89]\d{10}|\d{9}[\dX])$/i.test(isbn)) { showEditor({ isbn }); $("#isbnStatus").textContent = `${error.message}. Completa titolo e autore manualmente.`; }
     else $("#isbnStatus").textContent = error.message;
   }
+});
+
+$("#batchForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (batchRunning || batchPriceActive || batchPriceQueue.length) { $("#batchStatus").textContent = "È già in corso una ricerca multipla."; return; }
+  const parsed = parseBatchIsbns($("#batchIsbns").value);
+  if (!parsed.valid.length) { $("#batchStatus").textContent = "Inserisci almeno un ISBN-10 o ISBN-13 valido."; return; }
+  batchRunning = true;
+  $("#batchStart").disabled = true;
+  $("#batchResults").innerHTML = "";
+  batchEntries.clear();
+  parsed.valid.forEach(isbn => {
+    const entry = { isbn, stage:"In attesa", detail:"Ricerca non ancora iniziata", className:"" };
+    batchEntries.set(isbn, entry); renderBatchEntry(entry);
+  });
+  const warnings = [parsed.invalid.length ? `${parsed.invalid.length} valore non valido ignorato.` : "", parsed.excess ? ` Elaboro soltanto i primi ${BATCH_MAX_BOOKS} ISBN.` : ""].join("");
+  $("#batchStatus").textContent = `${parsed.valid.length} libri in elaborazione. ${warnings}`;
+  try {
+    await runPool(parsed.valid, BATCH_METADATA_CONCURRENCY, identifyBatchBook);
+    await loadBooks();
+    const identified = [...batchEntries.values()].filter(item => item.book).length;
+    $("#batchStatus").textContent = `${identified} di ${parsed.valid.length} libri identificati. La ricerca prezzi continua automaticamente, due libri alla volta.`;
+  } finally {
+    batchRunning = false;
+    $("#batchStart").disabled = Boolean(batchPriceActive || batchPriceQueue.length);
+  }
+});
+
+$("#batchClear").addEventListener("click", () => {
+  if (batchRunning || batchPriceActive) { $("#batchStatus").textContent = "Attendi la conclusione delle ricerche già avviate prima di pulire l’elenco."; return; }
+  $("#batchIsbns").value = ""; $("#batchResults").innerHTML = ""; $("#batchStatus").textContent = ""; batchEntries.clear();
 });
 
 $("#photo").addEventListener("change", async event => {
