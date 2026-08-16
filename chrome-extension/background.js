@@ -60,10 +60,9 @@ chrome.runtime.onConnect.addListener(port=>{
     };
     const runWave=async(label,tasksToRun)=>{if(!tasksToRun.length)return;port.postMessage({type:"PROGRESS",message:label});await Promise.all(tasksToRun.map(processTask));};
     await runWave("Prima ricerca: Vinted, eBay e Libraccio in parallelo…",[work.vintedIsbn,work.ebayIsbn,work.libraccio]);
-    await runWave("Controllo vendite concluse, AbeBooks e IBS…",[work.ebaySold,work.abeIsbn,work.ibs]);
-    await runWave("Controllo Subito e Amazon…",[work.subitoIsbn,work.amazonIsbn]);
+    await runWave("Cerco Vinted anche per titolo e controllo eBay e AbeBooks…",[work.vintedTitle,work.ebaySold,work.abeIsbn]);
+    await runWave("Controllo IBS, Subito e Amazon…",[work.ibs,work.subitoIsbn,work.amazonIsbn]);
     const fallbacks=[];
-    if(!success.get(work.vintedIsbn.id))fallbacks.push(work.vintedTitle);
     if(!success.get(work.ebayIsbn.id))fallbacks.push(work.ebayTitle);
     if(!success.get(work.abeIsbn.id))fallbacks.push(work.abeTitle);
     if(!success.get(work.subitoIsbn.id))fallbacks.push(work.subitoTitle);
