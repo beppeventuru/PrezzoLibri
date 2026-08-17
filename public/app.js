@@ -2,6 +2,7 @@ import { request } from "./cloud-api.js";
 import { $, escapeHtml, euro, NO_COVER, usableCoverUrl } from "./ui-utils.js";
 import { decodeBarcodeFile, startLiveScanner, stopLiveScanner } from "./scanner.js";
 import { renderMarketplaceResults, renderWorkspace, savedMarketplaceResults } from "./marketplace-ui.js";
+import { parseBatchIsbns, runPool } from "./batch-utils.js";
 
 const state = { book: null, books: [], marketplaceResults: null };
 const BATCH_MAX_BOOKS = 10;
@@ -41,12 +42,6 @@ async function loadBooks() {
   return true;
 }
 
-function parseBatchIsbns(value) {
-  const candidates = String(value || "").split(/[\s,;]+/).map(item => item.replace(/[^0-9X]/gi, "").toUpperCase()).filter(Boolean);
-  const valid = [...new Set(candidates.filter(item => /^(?:97[89]\d{10}|\d{9}[\dX])$/.test(item)))];
-  return { valid:valid.slice(0, BATCH_MAX_BOOKS), invalid:candidates.filter(item => !/^(?:97[89]\d{10}|\d{9}[\dX])$/.test(item)), excess:Math.max(0, valid.length - BATCH_MAX_BOOKS) };
-}
-
 function renderBatchEntry(entry) {
   let row = document.querySelector(`.batch-item[data-isbn="${CSS.escape(entry.isbn)}"]`);
   if (!row) {
@@ -82,17 +77,6 @@ function updateBatchEntry(isbn, changes) {
   Object.assign(entry, changes);
   renderBatchEntry(entry);
   return entry;
-}
-
-async function runPool(items, limit, worker) {
-  let cursor = 0;
-  const runners = Array.from({ length:Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const item = items[cursor++];
-      await worker(item);
-    }
-  });
-  await Promise.all(runners);
 }
 
 function startExtensionForBook(book) {
@@ -290,7 +274,7 @@ $("#isbnForm").addEventListener("submit", async event => {
 $("#batchForm").addEventListener("submit", async event => {
   event.preventDefault();
   if (batchRunning || batchPriceActive || batchPriceQueue.length) { $("#batchStatus").textContent = "È già in corso una ricerca multipla."; return; }
-  const parsed = parseBatchIsbns($("#batchIsbns").value);
+  const parsed = parseBatchIsbns($("#batchIsbns").value, BATCH_MAX_BOOKS);
   if (!parsed.valid.length) { $("#batchStatus").textContent = "Inserisci almeno un ISBN-10 o ISBN-13 valido."; return; }
   batchRunning = true;
   $("#batchStart").disabled = true;

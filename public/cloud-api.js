@@ -1,4 +1,5 @@
 import { calculatePrice } from "./pricing.js";
+import { marketplaceCandidates } from "./marketplace-import.js";
 
 const config = window.PREZZOLIBRI_CONFIG || {};
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabaseAnonKey);
@@ -109,6 +110,17 @@ async function importMarketplaceResults(db, bookId, results, explicitCoverUrl=""
   return {added:rows.length,removedDuplicates:duplicateIds.length,coverSaved:Boolean(coverCandidate),coverUrl:coverCandidate||""};
 }
 
+async function importMarketplaceResultsTransactional(db, bookId, results, explicitCoverUrl="") {
+  const allCandidates=(results||[]).flatMap(result=>(result.listings||[]).map(item=>({...item,platform:result.platform})));
+  const validCoverUrl=value=>{try{const url=new URL(value);return url.protocol==="https:"&&/amazon|ssl-images|abebooks|cloudfront|vinted|amazonaws/i.test(url.hostname)}catch{return false}};
+  const coverCandidate=validCoverUrl(explicitCoverUrl)?explicitCoverUrl:["amazon","abebooks","vinted"].flatMap(platform=>allCandidates.filter(item=>item.platform===platform&&item.coverUrl)).find(item=>validCoverUrl(item.coverUrl))?.coverUrl;
+  const rows=marketplaceCandidates(results,bookId);
+  const {data:transaction,error}=await db.rpc("import_marketplace_comparables",{p_book_id:bookId,p_rows:rows,p_cover_url:coverCandidate||""});if(error)throw error;
+  const book=transaction?.book;if(!book)throw new Error("Libro non restituito dall'importazione");
+  await saveAnalysisCache(db,book,transaction?.comparables||[]);
+  return {added:transaction?.added||0,removedDuplicates:transaction?.removed_duplicates||0,coverSaved:Boolean(coverCandidate),coverUrl:coverCandidate||""};
+}
+
 async function allComparablesForBooks(db, bookIds) {
   const rows = [], pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
@@ -147,8 +159,8 @@ async function cloudRequest(path, options={}) {
   const bookMatch=path.match(/^\/api\/books\/(\d+)$/);if(bookMatch&&method==="GET"){const {data:book,error}=await db.from("books").select("*").eq("id",bookMatch[1]).single();if(error)throw error;const {data:comparables,error:compError}=await db.from("comparables").select("*").eq("book_id",book.id).order("observed_at",{ascending:false});if(compError)throw compError;const currentAnalysis=cachedAnalysis(book)||await saveAnalysisCache(db,book,comparables||[]);return {...book,comparables,links:links(book),analysis:currentAnalysis};}
   const compMatch=path.match(/^\/api\/books\/(\d+)\/comparables$/);if(compMatch&&method==="POST"){const bookId=Number(compMatch[1]);const row={book_id:bookId,platform:input.platform,url:input.url||"",title:input.title||"",price:Number(input.price),shipping:Number(input.shipping||0),condition:input.condition||"",relevance:input.relevance||"medium",evidence_type:input.evidenceType||"active",date_label:input.dateLabel||"",accepted:input.accepted!==false};const {data,error}=await db.from("comparables").insert(row).select().single();if(error)throw error;await refreshBookAnalysis(db,bookId);return data;}
   const deleteCompMatch=path.match(/^\/api\/comparables\/(\d+)$/);if(deleteCompMatch&&method==="DELETE"){const comparableId=Number(deleteCompMatch[1]);const {data:comparable,error:lookupError}=await db.from("comparables").select("book_id").eq("id",comparableId).single();if(lookupError)throw lookupError;const {error}=await db.from("comparables").delete().eq("id",comparableId);if(error)throw error;await refreshBookAnalysis(db,comparable.book_id);return{deleted:true};}
-  const importMatch=path.match(/^\/api\/books\/(\d+)\/import-marketplaces$/);if(importMatch&&method==="POST")return importMarketplaceResults(db,Number(importMatch[1]),input.results,input.coverUrl);
-  const searchMatch=path.match(/^\/api\/books\/(\d+)\/search-marketplaces$/);if(searchMatch&&method==="POST"){const {data:book,error:bookError}=await db.from("books").select("*").eq("id",searchMatch[1]).single();if(bookError)throw bookError;const {data,error}=await db.functions.invoke("marketplace-search",{body:{book}});if(error||data?.error)throw new Error(data?.error||error.message);const imported=await importMarketplaceResults(db,book.id,data.results);return {results:data.results,...imported};}
+  const importMatch=path.match(/^\/api\/books\/(\d+)\/import-marketplaces$/);if(importMatch&&method==="POST")return importMarketplaceResultsTransactional(db,Number(importMatch[1]),input.results,input.coverUrl);
+  const searchMatch=path.match(/^\/api\/books\/(\d+)\/search-marketplaces$/);if(searchMatch&&method==="POST"){const {data:book,error:bookError}=await db.from("books").select("*").eq("id",searchMatch[1]).single();if(bookError)throw bookError;const {data,error}=await db.functions.invoke("marketplace-search",{body:{book}});if(error||data?.error)throw new Error(data?.error||error.message);const imported=await importMarketplaceResultsTransactional(db,book.id,data.results);return {results:data.results,...imported};}
   throw new Error("Risorsa non trovata");
 }
 
