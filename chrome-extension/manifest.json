@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrezzoLibri - Raccolta marketplace",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Legge nel tuo Chrome i prezzi dei libri cercati da PrezzoLibri.",
   "permissions": ["tabs"],
   "host_permissions": [
@@ -22,7 +22,17 @@
     },
     {
       "matches": ["https://www.vinted.it/*", "https://www.ebay.it/*", "https://www.abebooks.it/*", "https://www.subito.it/*", "https://www.libraccio.it/*", "https://www.ibs.it/*", "https://www.amazon.it/*"],
-      "js": ["marketplace-scraper.js"]
+      "js": [
+        "scrapers/common.js",
+        "scrapers/vinted.js",
+        "scrapers/ebay.js",
+        "scrapers/abebooks.js",
+        "scrapers/subito.js",
+        "scrapers/libraccio.js",
+        "scrapers/ibs.js",
+        "scrapers/amazon.js",
+        "marketplace-scraper.js"
+      ]
     }
   ]
 }
