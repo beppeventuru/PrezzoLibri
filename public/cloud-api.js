@@ -1,7 +1,9 @@
+import { calculatePrice } from "./pricing.js";
+
 const config = window.PREZZOLIBRI_CONFIG || {};
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabaseAnonKey);
 let cloudClient = null;
-const ANALYSIS_VERSION = 1;
+const ANALYSIS_VERSION = 2;
 
 async function client() {
   if (!cloudEnabled) return null;
@@ -48,31 +50,11 @@ function links(book) {
     titleFallback:{ vinted:`https://www.vinted.it/catalog?search_text=${text}`, ebay:`https://www.ebay.it/sch/i.html?_nkw=${text}`, subito:`https://www.subito.it/annunci-italia/vendita/libri-riviste/?q=${text}` } };
 }
 
-function analysis(book, comparables) {
-  const accepted = comparables.filter(item => item.accepted !== false && Number(item.price) > 0 && !/^\s*nuov/i.test(String(item.condition||"")));
-  const median=values=>{if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b),middle=Math.floor(sorted.length/2);return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2};
-  const percentile=(values,position)=>{if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b),index=(sorted.length-1)*position,lower=Math.floor(index),fraction=index-lower;return sorted[lower+1]==null?sorted[lower]:sorted[lower]+fraction*(sorted[lower+1]-sorted[lower])};
-  const robustPrices=items=>{const prices=items.map(item=>Number(item.price)).filter(price=>price>0);if(prices.length<4)return prices;const logs=prices.map(Math.log),q1=percentile(logs,.25),q3=percentile(logs,.75),spread=q3-q1,lower=q1-1.5*spread,upper=q3+1.5*spread,filtered=prices.filter(price=>Math.log(price)>=lower&&Math.log(price)<=upper);return filtered.length?filtered:prices};
-  const center=items=>median(robustPrices(items)),upper=items=>percentile(robustPrices(items),.75),evidence=item=>item.evidence_type||item.evidenceType||"active";
-  const reliable=accepted.filter(item=>item.relevance!=="low"&&item.relevance!=="medium"),usable=reliable.length?reliable:accepted.filter(item=>item.relevance!=="low");
-  const providers=[...new Set(accepted.map(item=>String(item.platform||"other").toLowerCase()))],group=(platform,type="active")=>usable.filter(item=>String(item.platform||"other").toLowerCase()===platform&&evidence(item)===type),usedPreferred=platform=>{const all=group(platform),used=all.filter(item=>/usato|buon|ottim|accettabil|seconda mano/i.test(String(item.condition||"")));return used.length?used:all};
-  const sold=usable.filter(item=>evidence(item)==="sold"),vinted=group("vinted"),ebay=group("ebay"),subito=group("subito"),libraccio=usedPreferred("libraccio"),ibs=usedPreferred("ibs"),amazon=usedPreferred("amazon"),abebooks=usedPreferred("abebooks");
-  const soldCenter=center(sold),vintedCenter=center(vinted),ebayCenter=center(ebay),subitoCenter=center(subito),libraccioCenter=center(libraccio),ibsCenter=center(ibs),amazonCenter=center(amazon),abeCenter=center(abebooks);
-  let market=null,basis="prezzo di copertina e condizioni";
-  if(soldCenter!=null&&vintedCenter!=null){if(vintedCenter<soldCenter/2){market=vintedCenter;basis="annunci Vinted (mercato distinto dalle vendite eBay)"}else if(vintedCenter>soldCenter*2){if(sold.length===1){const activeCenters=[vintedCenter,ebayCenter,subitoCenter,libraccioCenter].filter(value=>value!=null),activeConsensus=Math.min(vintedCenter,median(activeCenters)??vintedCenter);market=activeConsensus*.85+soldCenter*.15;basis="annunci attivi concordanti, con una sola vendita eBay usata come correttivo"}else{market=soldCenter;basis="vendite concluse eBay (annunci Vinted anomali)"}}else{market=Math.min(vintedCenter,soldCenter*(sold.length>=2?1.05:1.2));basis="vendite concluse eBay, verificate sugli annunci Vinted"}}
-  else if(soldCenter!=null){market=soldCenter;basis="vendite concluse eBay"}
-  else if(vintedCenter!=null){market=vintedCenter;basis="annunci Vinted"}
-  else if(libraccioCenter!=null){market=libraccioCenter*.9;basis="prezzi usati Libraccio, adattati alla vendita tra privati su Vinted"}
-  else if(ebayCenter!=null){market=ebayCenter*.9;basis="annunci eBay, ridotti perché non ancora venduti"}
-  else if(subitoCenter!=null){market=subitoCenter*.9;basis="annunci Subito, ridotti perché non ancora venduti"}
-  else{const secondary=[ibsCenter,amazonCenter,abeCenter].filter(value=>value!=null);if(secondary.length){market=Math.min(...secondary)*.75;basis="prezzo più prudente tra IBS, Amazon e AbeBooks"}}
-  const sourceCenters=[soldCenter,vintedCenter,ebayCenter,subitoCenter,libraccioCenter,ibsCenter,amazonCenter,abeCenter].filter(value=>value!=null&&value>0),spreadRatio=sourceCenters.length>=2?Math.max(...sourceCenters)/Math.min(...sourceCenters):1,disagreement=spreadRatio>2;
-  const targetFactor={new:1.12,excellent:1.05,good:1,fair:.8,poor:.55}[book.condition]||1,coverFactor={new:.72,excellent:.62,good:.5,fair:.35,poor:.2}[book.condition]||.5,local=Number(book.cover_price)>0?Number(book.cover_price)*coverFactor:null,unadjusted=market??local??5,recommended=market==null?unadjusted:unadjusted*targetFactor;
-  const targetUpper=upper(vinted)??upper(sold)??upper(libraccio)??upper(ebay)??upper(subito),maximumBase=targetUpper==null?recommended*1.25:Math.max(recommended,targetUpper*targetFactor),maximum=Math.min(maximumBase,recommended*(disagreement?1.25:1.5));
-  let confidence="low";if(!disagreement&&sold.length>=3&&vinted.length>=1)confidence="high";else if(!disagreement&&(sold.length>=1||vinted.length>=2))confidence="medium";
-  const money=value=>Math.max(1,Math.round(value)),warning=disagreement?` I mercati sono molto discordanti (il più alto è ${spreadRatio.toFixed(1)} volte il più basso), quindi non sono stati mediati.`:"";
-  return {quickPrice:money(recommended*.85),recommendedPrice:money(recommended),maximumPrice:money(maximum),confidence,marketMedian:market==null?null:money(market),marketplaceCount:providers.length,disagreement,spreadRatio,basis,explanation:accepted.length?`Stima basata principalmente su ${basis}. Considerati ${accepted.length} confronti, di cui ${accepted.filter(item=>evidence(item)==="sold").length} vendite concluse.${warning}`:"Stima provvisoria basata soltanto su prezzo di copertina e condizioni."};
-}
+const analysis = (book, comparables) => calculatePrice({
+  comparables,
+  coverPrice:book.cover_price,
+  condition:book.condition
+});
 
 const cachedAnalysis = book => Number(book.analysis_version) === ANALYSIS_VERSION && book.analysis_cache?.recommendedPrice != null
   ? book.analysis_cache
