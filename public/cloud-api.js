@@ -109,18 +109,6 @@ async function importMarketplaceResults(db, bookId, results, explicitCoverUrl=""
   return {added:rows.length,removedDuplicates:duplicateIds.length,coverSaved:Boolean(coverCandidate),coverUrl:coverCandidate||""};
 }
 
-async function fillMissingCovers(db, books) {
-  return Promise.all((books||[]).map(async book => {
-    if(book.cover_url&&!/books\.google\.com\/books\/content/i.test(book.cover_url))return book;
-    try {
-      const {data}=await db.functions.invoke("isbn-lookup",{body:{isbn:book.isbn}});
-      if(!data?.coverUrl)return book;
-      const {error}=await db.from("books").update({cover_url:data.coverUrl,updated_at:new Date().toISOString()}).eq("id",book.id);if(error)throw error;
-      return {...book,cover_url:data.coverUrl};
-    } catch { return book; }
-  }));
-}
-
 async function allComparablesForBooks(db, bookIds) {
   const rows = [], pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
