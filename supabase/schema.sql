@@ -3,7 +3,8 @@ create table if not exists public.books (
   user_id uuid not null references auth.users(id) on delete cascade,
   isbn text not null, title text not null default '', authors text not null default '', publisher text not null default '',
   year text not null default '', cover_url text not null default '', cover_price numeric, condition text not null default 'good',
-  notes text not null default '', created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  notes text not null default '', analysis_cache jsonb, analysis_version integer not null default 0,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique(user_id,isbn)
 );
 create table if not exists public.comparables (
