@@ -1,0 +1,37 @@
+name: Keep Supabase active
+
+on:
+  schedule:
+    - cron: "17 8 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      SUPABASE_URL: https://krhydwurwzvgjmhjuaej.supabase.co
+      # La chiave anon e pubblica e si trova gia nel frontend di PrezzoLibri.
+      SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyaHlkd3Vyd3p2Z2ptaGp1YWVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzODk5NjksImV4cCI6MjA5OTk2NTk2OX0.TvKVc8OMydmQ1Lbl_4AG7sdCrE3JaaSsqOoE81LaROE
+    steps:
+      - name: Esegui una lettura minima dal database
+        shell: bash
+        run: |
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error \
+            --output "$response_file" \
+            --write-out "%{http_code}" \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/books?select=id&limit=1")"
+
+          if [[ "$status" != "200" ]]; then
+            echo "Supabase ha risposto con HTTP $status"
+            cat "$response_file"
+            exit 1
+          fi
+
+          echo "Supabase e attivo (HTTP 200)."
