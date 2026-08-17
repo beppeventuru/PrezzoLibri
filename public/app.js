@@ -1,6 +1,8 @@
 import { request } from "./cloud-api.js";
+import { $, escapeHtml, euro, NO_COVER, usableCoverUrl } from "./ui-utils.js";
+import { decodeBarcodeFile, startLiveScanner, stopLiveScanner } from "./scanner.js";
+import { renderMarketplaceResults, renderWorkspace, savedMarketplaceResults } from "./marketplace-ui.js";
 
-const $ = selector => document.querySelector(selector);
 const state = { book: null, books: [], marketplaceResults: null };
 const BATCH_MAX_BOOKS = 10;
 const BATCH_METADATA_CONCURRENCY = 4;
@@ -10,82 +12,6 @@ const batchPriceQueue = [];
 let batchPriceActive = 0;
 let batchRunning = false;
 let booksLoadSequence = 0;
-let scannerLibraryPromise = null;
-let scannerControls = null;
-let scannerStream = null;
-let scannerReading = false;
-const euro = value => value == null ? "—" : new Intl.NumberFormat("it-IT", { style:"currency", currency:"EUR" }).format(value);
-const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[character]);
-const usableCoverUrl = value => value && !/books\.google\.com\/books\/content/i.test(value) ? value : "";
-
-function loadScannerLibrary() {
-  if (window.ZXingBrowser) return Promise.resolve(window.ZXingBrowser);
-  if (scannerLibraryPromise) return scannerLibraryPromise;
-  scannerLibraryPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/@zxing/browser@0.2.0/umd/zxing-browser.min.js";
-    script.async = true; script.dataset.barcodeScanner = "true";
-    script.addEventListener("load", () => resolve(window.ZXingBrowser));
-    script.addEventListener("error", () => reject(new Error("Impossibile caricare il lettore gratuito ZXing")));
-    document.head.append(script);
-  }).catch(error => { scannerLibraryPromise = null; throw error; });
-  return scannerLibraryPromise;
-}
-
-async function decodeBarcodeFile(file) {
-  if ("BarcodeDetector" in window) {
-    try { const detector = new BarcodeDetector({ formats:["ean_13"] }); const results = await detector.detect(await createImageBitmap(file)); const value = results.find(item => /^97[89]\d{10}$/.test(item.rawValue))?.rawValue; if (value) return value; } catch {}
-  }
-  const ZXingBrowser = await loadScannerLibrary();
-  const Reader = ZXingBrowser.BrowserMultiFormatOneDReader || ZXingBrowser.BrowserMultiFormatReader;
-  if (!Reader) throw new Error("Lettore ZXing non disponibile");
-  const reader = new Reader(); const objectUrl = URL.createObjectURL(file);
-  try { const result = await reader.decodeFromImageUrl(objectUrl); const value = result?.getText?.() || ""; if (!/^97[89]\d{10}$/.test(value)) throw new Error("Il codice letto non è un ISBN"); return value; }
-  finally { URL.revokeObjectURL(objectUrl); reader.reset?.(); }
-}
-
-function setLiveScannerStatus(message, state = "") {
-  $("#scannerStatus").textContent = message;
-  $("#scannerPanel").dataset.state = state;
-}
-
-function stopLiveScanner({ hide = true } = {}) {
-  scannerControls?.stop?.(); scannerControls = null;
-  scannerStream?.getTracks?.().forEach(track => track.stop()); scannerStream = null;
-  $("#scannerVideo").srcObject = null; scannerReading = false;
-  if (hide) $("#scannerPanel").hidden = true;
-  $("#startScanner").disabled = false;
-}
-
-async function acceptScannedIsbn(rawValue) {
-  if (scannerReading) return;
-  const isbn = String(rawValue || "").replace(/[^0-9X]/gi, "");
-  if (!/^97[89]\d{10}$/.test(isbn)) { setLiveScannerStatus("Codice rilevato, ma non è un ISBN valido. Continua a inquadrare.", "warning"); return; }
-  scannerReading = true; $("#isbn").value = isbn;
-  setLiveScannerStatus(`✓ ISBN letto: ${isbn}`, "success");
-  $("#isbnStatus").textContent = `✓ ISBN letto: ${isbn}`;
-  await new Promise(resolve => setTimeout(resolve, 700));
-  stopLiveScanner(); $("#isbnForm").requestSubmit();
-}
-
-async function startLiveScanner() {
-  if (scannerControls || scannerStream) return;
-  if (!navigator.mediaDevices?.getUserMedia) { $("#isbnStatus").textContent = "La scansione in diretta richiede HTTPS. Usa “Carica una foto” oppure apri l’app da una connessione sicura."; return; }
-  $("#startScanner").disabled = true; $("#scannerPanel").hidden = false;
-  setLiveScannerStatus("Autorizza la fotocamera e inquadra soltanto il codice a barre.");
-  try {
-    const ZXingBrowser = await loadScannerLibrary();
-    scannerStream = await navigator.mediaDevices.getUserMedia({ audio:false, video:{ facingMode:{ ideal:"environment" }, width:{ ideal:1280 }, height:{ ideal:720 } } });
-    const track = scannerStream.getVideoTracks()[0];
-    try { await track.applyConstraints({ advanced:[{ focusMode:"continuous" }] }); } catch {}
-    $("#scannerVideo").srcObject = scannerStream;
-    const Reader = ZXingBrowser.BrowserMultiFormatOneDReader || ZXingBrowser.BrowserMultiFormatReader;
-    if (!Reader) throw new Error("Lettore ZXing non disponibile");
-    const reader = new Reader();
-    scannerControls = await reader.decodeFromStream(scannerStream, $("#scannerVideo"), result => { if (result) acceptScannedIsbn(result.getText()); });
-    setLiveScannerStatus("Fotocamera attiva: centra il barcode nel riquadro e tieni fermo il libro.");
-  } catch (error) { stopLiveScanner({ hide:false }); setLiveScannerStatus(error.name === "NotAllowedError" ? "Permesso fotocamera negato. Abilitalo nelle impostazioni del browser." : error.message, "error"); }
-}
 
 async function requireLogin() {
   const session = await request("/api/session");
@@ -100,10 +26,9 @@ async function requireLogin() {
 function renderBookList() {
   const query = $("#bookSearch").value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("it").trim();
   const books = state.books.filter(book => !query || `${book.title} ${book.authors} ${book.isbn}`.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("it").includes(query));
-  const noCover = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='230'%3E%3Crect width='100%25' height='100%25' fill='%23e8e1d5'/%3E%3Cpath d='M48 55h64v90H48z' fill='none' stroke='%23756f66' stroke-width='5'/%3E%3Cpath d='M58 72h44M58 88h34M58 104h39' stroke='%23756f66' stroke-width='4'/%3E%3C/svg%3E";
   $("#bookCount").textContent = query ? `${books.length} di ${state.books.length}` : `${state.books.length} ${state.books.length === 1 ? "libro" : "libri"}`;
-  $("#bookList").innerHTML = books.length ? books.map(book => `<button class="book-row" data-id="${book.id}"><img src="${escapeHtml(usableCoverUrl(book.cover_url) || noCover)}" alt="Copertina di ${escapeHtml(book.title)}"><span class="book-row-copy"><b>${escapeHtml(book.title)}</b><small>${escapeHtml(book.authors || "Autore non indicato")}</small><em>ISBN ${escapeHtml(book.isbn)}</em></span><span class="book-row-price"><small>Prezzo consigliato</small><strong>${euro(book.analysis?.recommendedPrice)}</strong></span></button>`).join("") : `<p class="empty">${query ? "Nessun libro corrisponde alla ricerca." : "Nessun libro ancora valutato."}</p>`;
-  document.querySelectorAll(".book-row img").forEach(image => image.addEventListener("error", () => { image.src = noCover; }, { once:true }));
+  $("#bookList").innerHTML = books.length ? books.map(book => `<button class="book-row" data-id="${book.id}"><img src="${escapeHtml(usableCoverUrl(book.cover_url) || NO_COVER)}" alt="Copertina di ${escapeHtml(book.title)}"><span class="book-row-copy"><b>${escapeHtml(book.title)}</b><small>${escapeHtml(book.authors || "Autore non indicato")}</small><em>ISBN ${escapeHtml(book.isbn)}</em></span><span class="book-row-price"><small>Prezzo consigliato</small><strong>${euro(book.analysis?.recommendedPrice)}</strong></span></button>`).join("") : `<p class="empty">${query ? "Nessun libro corrisponde alla ricerca." : "Nessun libro ancora valutato."}</p>`;
+  document.querySelectorAll(".book-row img").forEach(image => image.addEventListener("error", () => { image.src = NO_COVER; }, { once:true }));
   document.querySelectorAll(".book-row").forEach(button => button.addEventListener("click", () => openBook(button.dataset.id)));
 }
 
@@ -259,32 +184,12 @@ function showEditor(metadata) {
   $("#workspace").hidden = !metadata.id;
 }
 
-function savedMarketplaceResults(comparables=[]) {
-  const platforms=["vinted","ebay","abebooks","subito","libraccio","ibs","amazon"];
-  return platforms.map(platform=>{const listings=comparables.filter(item=>item.platform===platform&&!/^\s*nuov/i.test(String(item.condition||""))).map(item=>({title:item.title,price:Number(item.price),shipping:Number(item.shipping||0),url:item.url,condition:item.condition,relevance:item.relevance,evidenceType:item.evidence_type||"active",dateLabel:item.date_label||""}));return{platform,status:listings.length?"found":"not_found",note:"Risultati usati salvati per questo libro.",listings};});
-}
-
-async function openBook(id) { state.book = await request(`/api/books/${id}`);state.marketplaceResults=savedMarketplaceResults(state.book.comparables);showEditor(state.book);renderWorkspace();renderMarketplaceResults(state.marketplaceResults); }
-
-function renderWorkspace() {
-  const b = state.book, a = b.analysis;
-  $("#recommended").textContent = euro(a.recommendedPrice); $("#quick").textContent = euro(a.quickPrice); $("#maximum").textContent = euro(a.maximumPrice);
-  $("#confidence").textContent = `Affidabilità ${a.confidence === "high" ? "alta" : a.confidence === "medium" ? "media" : "bassa"} · mediana mercato ${euro(a.marketMedian)}`;
-  $("#explanation").textContent = a.explanation;
-  const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", libraccio:"Libraccio", ibs:"IBS", amazon:"Amazon" };
-  $("#marketLinks").innerHTML = Object.entries(names).map(([key,name]) => `<article><h3>${name}</h3><a href="${b.links[key]}" target="_blank" rel="noopener">In vendita · ISBN ↗</a>${b.links.titleFallback?.[key] ? `<a class="fallback" href="${b.links.titleFallback[key]}" target="_blank" rel="noopener">In vendita · titolo ↗</a>` : ""}${b.links.sold?.[key] ? `<a class="sold-link" href="${b.links.sold[key]}" target="_blank" rel="noopener">Venduti ultimi 90 giorni ↗</a><small class="sold-note">eBay non mostra qui le vendite più vecchie.</small>` : ""}</article>`).join("");
-  if (!state.marketplaceResults) $("#marketResults").innerHTML = `<p class="empty">Premi “Cerca i prezzi”: i risultati appariranno direttamente qui.</p>`;
-}
-
-function renderMarketplaceResults(results) {
-  results = results.map(result => ({ ...result, listings:(result.listings || []).filter(item => !/^\s*nuov/i.test(String(item.condition || ""))) }));
-  const names = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subito:"Subito", libraccio:"Libraccio", ibs:"IBS", amazon:"Amazon" };
-  const listingRows = listings => listings.map(item => `<div class="listing"><div><b>${escapeHtml(item.title || "Offerta")}</b><small>${item.relevance === "exact" ? "ISBN esatto" : item.relevance === "high" ? "Stessa edizione probabile" : "Da verificare"}${item.condition ? ` · ${escapeHtml(item.condition)}` : ""}</small></div><span class="listing-price"><strong>${euro(item.price + item.shipping)}</strong>${item.dateLabel ? `<small>${escapeHtml(item.dateLabel)}</small>` : ""}</span><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Verifica ↗</a></div>`).join("");
-  const sections = results.flatMap(result => result.platform !== "ebay" ? [{ ...result, label:names[result.platform] || result.platform }] : [
-    { ...result, label:"eBay in vendita", listings:result.listings.filter(item => item.evidenceType !== "sold"), emptyNote:"Nessun annuncio attivo pertinente." },
-    { ...result, label:"eBay venduti", listings:result.listings.filter(item => item.evidenceType === "sold"), emptyNote:"Nessuna vendita conclusa trovata.", soldSection:true }
-  ]);
-  $("#marketResults").innerHTML = sections.map(result => `<details class="market-result${result.soldSection ? " sold-market-result" : ""}"><summary class="market-result-head"><h3>${escapeHtml(result.label)}</h3><span class="${result.listings.length ? "found" : escapeHtml(result.status)}">${result.listings.length ? `${result.listings.length} ${result.listings.length === 1 ? "risultato" : "risultati"}` : result.status === "blocked" ? "Non accessibile" : "Nessun risultato"}</span></summary><div class="market-result-body">${result.soldSection ? `<p class="sold-explanation">Vendite concluse: sono il riferimento più importante per stimare il prezzo reale.</p>` : ""}${result.listings.length ? listingRows(result.listings) : `<p class="empty">${escapeHtml(result.emptyNote || result.note || "Nessuna offerta verificabile trovata.")}</p>`}</div></details>`).join("");
+async function openBook(id) {
+  state.book = await request(`/api/books/${id}`);
+  state.marketplaceResults = savedMarketplaceResults(state.book.comparables);
+  showEditor(state.book);
+  renderWorkspace(state.book, state.marketplaceResults);
+  renderMarketplaceResults(state.marketplaceResults);
 }
 
 function startExtensionSearch() {
@@ -417,15 +322,15 @@ $("#photo").addEventListener("change", async event => {
   const file = event.target.files[0]; if (!file) return;
   $("#isbnStatus").textContent = "Leggo l’ISBN dalla foto…";
   try {
-    let isbn;
-    if ("BarcodeDetector" in window) {
-      try { const detector = new BarcodeDetector({ formats:["ean_13"] }); const results = await detector.detect(await createImageBitmap(file)); isbn = results.find(x => /^97[89]\d{10}$/.test(x.rawValue))?.rawValue; } catch {}
-    }
-    if (!isbn) isbn = await decodeBarcodeFile(file);
+    const isbn = await decodeBarcodeFile(file);
     $("#isbn").value = isbn; $("#isbnStatus").textContent = `ISBN letto: ${isbn}`; $("#isbnForm").requestSubmit();
   } catch (error) { $("#isbnStatus").textContent = `${error.message}. Prova una foto più ravvicinata o inserisci le cifre.`; }
 });
-$("#startScanner").addEventListener("click", startLiveScanner);
+$("#startScanner").addEventListener("click", () => startLiveScanner(isbn => {
+  $("#isbn").value = isbn;
+  $("#isbnStatus").textContent = `✓ ISBN letto: ${isbn}`;
+  $("#isbnForm").requestSubmit();
+}));
 $("#stopScanner").addEventListener("click", () => stopLiveScanner());
 $("#bookSearch").addEventListener("input", renderBookList);
 

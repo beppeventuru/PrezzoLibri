@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check server.mjs && node --check src/isbn.mjs && node --check src/pricing.mjs && node --check public/app.js && node --check public/cloud-api.js && node --check public/pricing.js && node --check chrome-extension/app-bridge.js && node --check chrome-extension/background.js && node --check chrome-extension/marketplace-scraper.js && node --check chrome-extension/popup.js"
+    "check": "node --check server.mjs && node --check src/isbn.mjs && node --check src/pricing.mjs && node --check public/app.js && node --check public/cloud-api.js && node --check public/pricing.js && node --check public/ui-utils.js && node --check public/scanner.js && node --check public/marketplace-ui.js && node --check chrome-extension/app-bridge.js && node --check chrome-extension/background.js && node --check chrome-extension/marketplace-scraper.js && node --check chrome-extension/popup.js"
   },
   "engines": { "node": ">=24" }
 }
