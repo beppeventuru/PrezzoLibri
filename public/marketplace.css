@@ -30,6 +30,8 @@
 .listing a { color:var(--orange); font-weight:800; }
 .listing-price { display:flex; flex-direction:column; align-items:flex-end; white-space:nowrap; }
 .listing-price small { margin-top:.18rem; color:#73766f; font-size:.76rem; font-weight:600; }
+.informational-listing { background:#fff0ee; border:1px solid #efc5bf; border-radius:9px; padding:12px; }
+.informational-label { color:#a13d31; font-weight:800; }
 details { margin-top:20px; }
 details pre { max-height:360px; overflow:auto; white-space:pre-wrap; background:#172d24; color:#e8f2ec; border-radius:10px; padding:14px; font-size:12px; }
 summary { cursor:pointer; color:var(--green); font-weight:800; }

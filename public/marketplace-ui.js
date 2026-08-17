@@ -5,7 +5,7 @@ const PLATFORM_NAMES = { vinted:"Vinted", ebay:"eBay", abebooks:"AbeBooks", subi
 export function savedMarketplaceResults(comparables = []) {
   return Object.keys(PLATFORM_NAMES).map(platform => {
     const listings = comparables
-      .filter(item => item.platform === platform && !/^\s*nuov/i.test(String(item.condition || "")))
+      .filter(item => item.platform === platform && (platform === "vinted" || !/^\s*nuov/i.test(String(item.condition || ""))))
       .map(item => ({
         title:item.title,
         price:Number(item.price),
@@ -14,8 +14,9 @@ export function savedMarketplaceResults(comparables = []) {
         condition:item.condition,
         relevance:item.relevance,
         evidenceType:item.evidence_type || "active",
-        dateLabel:item.date_label || ""
-      }));
+        dateLabel:item.date_label || "",
+        accepted:item.accepted !== false && !(platform === "vinted" && /^\s*nuov/i.test(String(item.condition || "")))
+      })).sort((a,b)=>Number(a.accepted===false)-Number(b.accepted===false));
     return { platform, status:listings.length ? "found" : "not_found", note:"Risultati usati salvati per questo libro.", listings };
   });
 }
@@ -32,8 +33,12 @@ export function renderWorkspace(book, marketplaceResults) {
 }
 
 export function renderMarketplaceResults(input) {
-  const results = input.map(result => ({ ...result, listings:(result.listings || []).filter(item => !/^\s*nuov/i.test(String(item.condition || ""))) }));
-  const listingRows = listings => listings.map(item => `<div class="listing"><div><b>${escapeHtml(item.title || "Offerta")}</b><small>${item.relevance === "exact" ? "ISBN esatto" : item.relevance === "high" ? "Stessa edizione probabile" : "Da verificare"}${item.condition ? ` · ${escapeHtml(item.condition)}` : ""}</small></div><span class="listing-price"><strong>${euro(item.price + item.shipping)}</strong>${item.dateLabel ? `<small>${escapeHtml(item.dateLabel)}</small>` : ""}</span><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Verifica ↗</a></div>`).join("");
+  const informational = item => item.accepted === false || (item.platform === "vinted" && /^\s*nuov/i.test(String(item.condition || "")));
+  const results = input.map(result => ({ ...result, listings:(result.listings || [])
+    .filter(item => result.platform === "vinted" || !/^\s*nuov/i.test(String(item.condition || "")))
+    .map(item => ({ ...item, platform:result.platform, informational:informational({ ...item, platform:result.platform }) }))
+    .sort((a,b)=>Number(a.informational)-Number(b.informational)) }));
+  const listingRows = listings => listings.map(item => `<div class="listing${item.informational ? " informational-listing" : ""}"><div><b>${escapeHtml(item.title || "Offerta")}</b><small>${item.relevance === "exact" ? "ISBN esatto" : item.relevance === "high" ? "Stessa edizione probabile" : "Da verificare"}${item.condition ? ` · ${escapeHtml(item.condition)}` : ""}${item.informational ? ` · <span class="informational-label">Solo informativo, escluso dal calcolo</span>` : ""}</small></div><span class="listing-price"><strong>${euro(item.price + item.shipping)}</strong>${item.dateLabel ? `<small>${escapeHtml(item.dateLabel)}</small>` : ""}</span><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Verifica ↗</a></div>`).join("");
   const sections = results.flatMap(result => result.platform !== "ebay" ? [{ ...result, label:PLATFORM_NAMES[result.platform] || result.platform }] : [
     { ...result, label:"eBay in vendita", listings:result.listings.filter(item => item.evidenceType !== "sold"), emptyNote:"Nessun annuncio attivo pertinente." },
     { ...result, label:"eBay venduti", listings:result.listings.filter(item => item.evidenceType === "sold"), emptyNote:"Nessuna vendita conclusa trovata.", soldSection:true }

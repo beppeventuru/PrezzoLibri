@@ -11,7 +11,7 @@ export function marketplaceCandidates(results, bookId) {
   const keys = new Set();
   return (results || []).flatMap(result => (result.listings || []).map(item => ({ ...item, platform:result.platform })))
     .filter(item => { try { return ALLOWED_HOSTS[item.platform]?.includes(new URL(item.url).hostname) && Number(item.price) > 0 && Number(item.price) < 100000; } catch { return false; } })
-    .filter(item => !/^\s*nuov/i.test(String(item.condition || "")))
+    .filter(item => item.platform === "vinted" || !/^\s*nuov/i.test(String(item.condition || "")))
     .filter(item => { const key = comparableKey(item); if (keys.has(key)) return false; keys.add(key); return true; })
-    .map(item => ({ book_id:bookId, platform:item.platform, url:item.url, title:item.title || "", price:Number(item.price), shipping:Math.max(0, Number(item.shipping) || 0), condition:item.condition || "", relevance:["exact", "high", "medium", "low"].includes(item.relevance) ? item.relevance : "medium", evidence_type:item.evidenceType === "sold" ? "sold" : "active", date_label:item.dateLabel || "", accepted:true }));
+    .map(item => ({ book_id:bookId, platform:item.platform, url:item.url, title:item.title || "", price:Number(item.price), shipping:Math.max(0, Number(item.shipping) || 0), condition:item.condition || "", relevance:["exact", "high", "medium", "low"].includes(item.relevance) ? item.relevance : "medium", evidence_type:item.evidenceType === "sold" ? "sold" : "active", date_label:item.dateLabel || "", accepted:!(item.platform === "vinted" && /^\s*nuov/i.test(String(item.condition || ""))) }));
 }
