@@ -1,5 +1,6 @@
 import { calculatePrice } from "./pricing.js";
 import { marketplaceCandidates } from "./marketplace-import.js";
+import { relevantToBook } from "./book-match.js";
 
 const config = window.PREZZOLIBRI_CONFIG || {};
 const cloudEnabled = Boolean(config.supabaseUrl && config.supabaseAnonKey);
@@ -114,11 +115,16 @@ async function importMarketplaceResultsTransactional(db, bookId, results, explic
   const allCandidates=(results||[]).flatMap(result=>(result.listings||[]).map(item=>({...item,platform:result.platform})));
   const validCoverUrl=value=>{try{const url=new URL(value);return url.protocol==="https:"&&/amazon|ssl-images|abebooks|cloudfront|vinted|amazonaws/i.test(url.hostname)}catch{return false}};
   const coverCandidate=validCoverUrl(explicitCoverUrl)?explicitCoverUrl:["amazon","abebooks","vinted"].flatMap(platform=>allCandidates.filter(item=>item.platform===platform&&item.coverUrl)).find(item=>validCoverUrl(item.coverUrl))?.coverUrl;
-  const rows=marketplaceCandidates(results,bookId);
+  const {data:storedBook,error:bookError}=await db.from("books").select("*").eq("id",bookId).single();if(bookError)throw bookError;
+  const rows=marketplaceCandidates(results,bookId,storedBook);
   const {data:transaction,error}=await db.rpc("import_marketplace_comparables",{p_book_id:bookId,p_rows:rows,p_cover_url:coverCandidate||""});if(error)throw error;
   const book=transaction?.book;if(!book)throw new Error("Libro non restituito dall'importazione");
-  await saveAnalysisCache(db,book,transaction?.comparables||[]);
-  return {added:transaction?.added||0,removedDuplicates:transaction?.removed_duplicates||0,coverSaved:Boolean(coverCandidate),coverUrl:coverCandidate||""};
+  const comparables=transaction?.comparables||[];
+  const irrelevantVinted=comparables.filter(item=>item.platform==="vinted"&&!relevantToBook(item,book));
+  if(irrelevantVinted.length){const {error:cleanupError}=await db.from("comparables").delete().in("id",irrelevantVinted.map(item=>item.id));if(cleanupError)throw cleanupError;}
+  const cleanedComparables=comparables.filter(item=>!irrelevantVinted.some(rejected=>rejected.id===item.id));
+  await saveAnalysisCache(db,book,cleanedComparables);
+  return {added:transaction?.added||0,removedDuplicates:(transaction?.removed_duplicates||0)+irrelevantVinted.length,coverSaved:Boolean(coverCandidate),coverUrl:coverCandidate||""};
 }
 
 async function allComparablesForBooks(db, bookIds) {

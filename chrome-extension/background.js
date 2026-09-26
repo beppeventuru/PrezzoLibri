@@ -1,17 +1,7 @@
+importScripts("book-match.js");
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const encode=value=>encodeURIComponent(value);
-const normalized=value=>String(value||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("it");
-function relevantToBook(item,book){
-  const haystack=normalized(item.title);
-  const ignored=new Set(["della","delle","degli","come","libro","edizione","sono","alla","nelle"]);
-  const titleTokens=[...new Set(normalized(book.title).match(/[a-z0-9]{4,}/g)||[])].filter(token=>!ignored.has(token));
-  const authorTokens=[...new Set(normalized(book.authors||"").match(/[a-z0-9]{4,}/g)||[])].filter(token=>!ignored.has(token));
-  const titleMatches=titleTokens.filter(token=>haystack.includes(token)).length;
-  const authorMatches=authorTokens.filter(token=>haystack.includes(token)).length;
-  // Titoli generici come "Ragazza con paesaggio" generano quadri, stampe e
-  // figurine. Per una ricerca testuale eBay richiediamo anche l'autore.
-  return titleMatches>=Math.min(2,titleTokens.length||1)&&(!authorTokens.length||authorMatches>=1);
-}
+const relevantToBook=globalThis.PrezzoLibriRelevantToBook;
 function isbn13to10(isbn){if(!/^978\d{10}$/.test(isbn))return"";const core=isbn.slice(3,12);let sum=0;for(let i=0;i<9;i++)sum+=Number(core[i])*(10-i);const check=(11-sum%11)%11;return core+(check===10?"X":check);}
 function tasks(book){const text=`${book.title} ${book.authors||""}`.trim(),asin=isbn13to10(book.isbn);return{
   vintedIsbn:{id:"vinted-isbn",platform:"vinted",url:`https://www.vinted.it/catalog?search_text=${encode(book.isbn)}`},
@@ -41,7 +31,8 @@ chrome.runtime.onConnect.addListener(port=>{
       const currentStep=++step;
       port.postMessage({type:"PROGRESS",message:`Cerco su ${task.platform}… (${completed} completate)`});
       const packet=await scrape(task,message.book);
-      const collectedListings=task.fallback?packet.listings.filter(item=>relevantToBook(item,message.book)).map(item=>({...item,relevance:item.relevance==="exact"?"high":item.relevance})):packet.listings;
+      const shouldCheckRelevance=task.fallback||task.platform==="vinted";
+      const collectedListings=shouldCheckRelevance?packet.listings.filter(item=>relevantToBook(item,message.book)).map(item=>({...item,relevance:item.relevance==="exact"?"high":item.relevance})):packet.listings;
       const rawListings=collectedListings.filter(item=>item.platform==="vinted"||!/^\s*nuov/i.test(String(item.condition||"")));
       // AbeBooks ha talvolta esposto il prezzo del libro anche nel campo
       // spedizione. Non salviamo un costo palesemente duplicato.
